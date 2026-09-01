@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>초간단 스마트폰 ADAS & 루프 블랙박스</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            background-color: #050b14;
+            color: #fff;
+            overflow: hidden;
+            position: fixed;
+        }
+
+        /* 스마트폰 전면 화면 뷰포트 */
+        .mobile-viewport {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-color: #050b14;
+        }
+
+        /* 스마트폰 화면 맞춤 캔버스 */
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            display: block;
+        }
+
+        /* 상단 HUD 바 */
+        .top-hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 10px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(180deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%);
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        .hud-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .rec-pill {
+            background-color: rgba(239, 68, 68, 0.95);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.4; }
+            100% { opacity: 1; }
+        }
+
+        .adas-status {
+            background-color: rgba(34, 197, 94, 0.25);
+            color: #4ade80;
+            border: 1px solid rgba(34, 197, 94, 0.6);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .speed-display {
+            font-size: 2rem;
+            font-weight: 900;
+            color: #ffffff;
+            letter-spacing: -1px;
+            text-shadow: 0 0 15px rgba(59, 130, 246, 0.9);
+            display: flex;
+            align-items: baseline;
+            gap: 2px;
+        }
+
+        .speed-unit {
+            font-size: 0.8rem;
+            font-weight: normal;
+            color: #94a3b8;
+        }
+
+        .traffic-badge {
+            background-color: rgba(15, 23, 42, 0.95);
+            border: 2px solid #3b82f6;
+            padding: 8px 16px;
+            border-radius: 25px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1rem;
+            font-weight: 900;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);
+        }
+
+        .light-dot {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background-color: #475569;
+        }
+
+        .light-dot.red { background-color: #ef4444; box-shadow: 0 0 18px #ef4444; }
+        .light-dot.green { background-color: #22c55e; box-shadow: 0 0 18px #22c55e; }
+
+        /* 신호 변경 대형 팝업 배너 */
+        .signal-pop-banner {
+            position: absolute;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-size: 1.2rem;
+            font-weight: 900;
+            z-index: 35;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            display: none;
+            backdrop-filter: blur(10px);
+            animation: popIn 0.3s ease-out;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        @keyframes popIn {
+            from { transform: translateX(-50%) scale(0.7); opacity: 0; }
+            to { transform: translateX(-50%) scale(1); opacity: 1; }
+        }
+
+        /* 경보 발생 시 화면 중앙 팝업 */
+        .alert-banner {
+            position: absolute;
+            top: 30%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 16px 28px;
+            border-radius: 14px;
+            font-size: 1.3rem;
+            font-weight: 900;
+            display: none;
+            z-index: 30;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.9);
+            text-align: center;
+            width: 90%;
+            max-width: 500px;
+            backdrop-filter: blur(10px);
+        }
+
+        .alert-banner.critical {
+            background-color: rgba(220, 38, 38, 0.95);
+            color: #ffffff;
+            display: block;
+            border: 2px solid #f87171;
+            animation: flash 0.3s infinite alternate;
+        }
+
+        .alert-banner.warning {
+            background-color: rgba(234, 179, 8, 0.95);
+            color: #000000;
+            display: block;
+            border: 2px solid #fde047;
+        }
+
+        @keyframes flash {
+            from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            to { opacity: 0.85; transform: translate(-50%, -50%) scale(1.03); }
+        }
+
+        /* 하단 간편 테스트 바 */
+        .bottom-test-bar {
+            position: absolute;
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            z-index: 25;
+            background-color: rgba(15, 23, 42, 0.85);
+            padding: 8px 14px;
+            border-radius: 30px;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.15);
+            white-space: nowrap;
+        }
+
+        .mini-btn {
+            background-color: rgba(255,255,255,0.15);
+            color: #fff;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            touch-action: manipulation;
+        }
+
+        .mini-btn:active {
+            transform: scale(0.95);
+            background-color: rgba(255,255,255,0.3);
+        }
+
+        /* 터치 안내 레이어 */
+        .touch-hint {
+            position: absolute;
+            bottom: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.6);
+            z-index: 20;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="mobile-viewport">
+        <!-- 상단 미니멀 HUD (자동 작동 상태 표시) -->
+        <div class="top-hud">
+            <div class="hud-left">
+                <div class="rec-pill">
+                    <span style="width: 6px; height: 6px; background: white; border-radius: 50%;"></span>
+                    REC (2개 순환)
+                </div>
+                <div class="adas-status">🟢 ADAS 감지 중</div>
+            </div>
+
+            <!-- 중앙 속도 표시 -->
+            <div class="speed-display">
+                <span id="speedNum">60</span>
+                <span class="speed-unit">km/h</span>
+            </div>
+
+            <!-- 우측 신호등 상태 -->
+            <div class="traffic-badge">
+                <div id="lightDot" class="light-dot green"></div>
+                <span id="lightText">진행 신호</span>
+            </div>
+        </div>
+
+        <!-- 신호 변경 대형 팝업 배너 -->
+        <div id="signalPopBanner" class="signal-pop-banner"></div>
+
+        <!-- 중앙 비상 경보 팝업 -->
+        <div id="alertBanner" class="alert-banner">위험 경보 메시지</div>
+
+        <!-- 메인 스마트폰 화면 캔버스 -->
+        <canvas id="adasCanvas"></canvas>
+
+        <div class="touch-hint">👆 화면이나 버튼을 누르면 음성/경보가 즉시 활성화됩니다</div>
+
+        <!-- 하단 간편 테스트 바 -->
+        <div class="bottom-test-bar">
+            <button id="btnObstacle" class="mini-btn" style="background-color: #ef4444;">🚨 돌발 테스트</button>
+            <button id="btnCutIn" class="mini-btn" style="background-color: #eab308; color: #000;">⚠️ 급정거 테스트</button>
+            <button id="btnSignal" class="mini-btn">🚦 신호등 상태 변경</button>
+        </div>
+    </div>
+
+    <script>
+        // -------------------------------------------------------------
+        // 모바일 사파리/크롬 대응 캔버스 자동 리사이징
+        // -------------------------------------------------------------
+        const canvas = document.getElementById('adasCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // -------------------------------------------------------------
+        // 모바일 오디오 자율 활성화 (터치 해제)
+        // -------------------------------------------------------------
+        let audioCtx = null;
+        let lastAlertTime = 0;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        window.addEventListener('touchstart', initAudio, { once: true });
+        window.addEventListener('click', initAudio, { once: true });
+
+        function playBuzzer(freq = 880, type = 'sine', duration = 0.15) {
+            initAudio();
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        function speakVoice(text, bypassDebounce = false) {
+            const now = Date.now();
+            if (!bypassDebounce && (now - lastAlertTime < 1800)) return;
+            lastAlertTime = now;
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utter = new SpeechSynthesisUtterance(text);
+                utter.lang = 'ko-KR';
+                utter.rate = 1.25;
+                window.speechSynthesis.speak(utter);
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 신호 변경 대형 팝업 배너 표시 함수
+        // -------------------------------------------------------------
+        let signalPopTimer = null;
+        function showSignalPopBanner(text, bgColor, textColor = '#ffffff') {
+            const popBanner = document.getElementById('signalPopBanner');
+            popBanner.innerText = text;
+            popBanner.style.backgroundColor = bgColor;
+            popBanner.style.color = textColor;
+            popBanner.style.display = 'block';
+
+            if (signalPopTimer) clearTimeout(signalPopTimer);
+            signalPopTimer = setTimeout(() => {
+                popBanner.style.display = 'none';
+            }, 2500);
+        }
+
+        // -------------------------------------------------------------
+        // 자동 구동 ADAS 감지 엔진
+        // -------------------------------------------------------------
+        let egoSpeed = 60;
+        let trafficSignalState = 'GREEN';
+        let suddenObstacleActive = false;
+        let suddenObstacleX = -50;
+        let vehicleDistance = 22.0;
+        let vehicleApproaching = false;
+
+        let obstacleTimer = null;
+        let cutInTimer = null;
+
+        const btnObstacle = document.getElementById('btnObstacle');
+        const btnCutIn = document.getElementById('btnCutIn');
+
+        function stopObstacleTest() {
+            suddenObstacleActive = false;
+            suddenObstacleX = -50;
+            btnObstacle.style.backgroundColor = '#ef4444';
+            btnObstacle.innerText = '🚨 돌발 테스트';
+            if (obstacleTimer) clearTimeout(obstacleTimer);
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        }
+
+        function stopCutInTest() {
+            vehicleApproaching = false;
+            vehicleDistance = 22.0;
+            btnCutIn.style.backgroundColor = '#eab308';
+            btnCutIn.innerText = '⚠️ 급정거 테스트';
+            if (cutInTimer) clearTimeout(cutInTimer);
+            if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+        }
+
+        btnObstacle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (suddenObstacleActive) {
+                stopObstacleTest();
+            } else {
+                stopCutInTest();
+                suddenObstacleActive = true;
+                suddenObstacleX = 100;
+                btnObstacle.style.backgroundColor = '#991b1b';
+                btnObstacle.innerText = '⏹️ 돌발 멈추기';
+                playBuzzer(1200, 'sawtooth', 0.25);
+                speakVoice("주의! 갑자기 튀어나온 보행자 감지!");
+
+                obstacleTimer = setTimeout(() => {
+                    stopObstacleTest();
+                }, 3500);
+            }
+        });
+
+        btnCutIn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (vehicleApproaching) {
+                stopCutInTest();
+            } else {
+                stopObstacleTest();
+                vehicleApproaching = true;
+                vehicleDistance = 7.5;
+                btnCutIn.style.backgroundColor = '#854d0e';
+                btnCutIn.innerText = '⏹️ 급정거 멈추기';
+                playBuzzer(1000, 'square', 0.3);
+                speakVoice("위험! 전방 차량 급정거! 즉시 감속하세요!");
+
+                cutInTimer = setTimeout(() => {
+                    stopCutInTest();
+                }, 3500);
+            }
+        });
+
+        document.getElementById('btnSignal').addEventListener('click', (e) => {
+            e.stopPropagation();
+            const lightDot = document.getElementById('lightDot');
+            const lightText = document.getElementById('lightText');
+
+            if (trafficSignalState === 'GREEN') {
+                trafficSignalState = 'LEFT_TURN';
+                lightDot.className = 'light-dot green';
+                lightText.innerText = '좌회전 신호';
+                showSignalPopBanner('⬅️ 좌회전 신호로 변경되었습니다.', 'rgba(34, 197, 94, 0.95)');
+                speakVoice("좌회전 신호로 변경되었습니다.", true);
+            } else if (trafficSignalState === 'LEFT_TURN') {
+                trafficSignalState = 'RED';
+                lightDot.className = 'light-dot red';
+                lightText.innerText = '정지 신호';
+                showSignalPopBanner('🚨 위험! 적색 정지 신호 감지!', 'rgba(239, 68, 68, 0.95)');
+                playBuzzer(900, 'sine', 0.2);
+                speakVoice("위험! 정지 신호 감지! 속도를 줄이세요.", true);
+            } else {
+                trafficSignalState = 'GREEN';
+                lightDot.className = 'light-dot green';
+                lightText.innerText = '진행 신호';
+                showSignalPopBanner('🟢 파란신호로 변경되었습니다.', 'rgba(34, 197, 94, 0.95)');
+                speakVoice("파란신호로 변경되었습니다.", true);
+            }
+        });
+
+        // -------------------------------------------------------------
+        // 실시간 연산 및 렌더링 루프
+        // -------------------------------------------------------------
+        const alertBanner = document.getElementById('alertBanner');
+        let lastFrameTime = performance.now();
+
+        function renderLoop() {
+            const now = performance.now();
+            const dt = Math.min((now - lastFrameTime) / 1000, 0.1);
+            lastFrameTime = now;
+
+            // 배경
+            ctx.fillStyle = '#050b14';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const vpX = canvas.width / 2;
+            const vpY = canvas.height * 0.45;
+
+            // 도로
+            ctx.fillStyle = '#1e293b';
+            ctx.beginPath();
+            ctx.moveTo(vpX - 15, vpY);
+            ctx.lineTo(vpX + 15, vpY);
+            ctx.lineTo(canvas.width * 0.95, canvas.height);
+            ctx.lineTo(canvas.width * 0.05, canvas.height);
+            ctx.closePath();
+            ctx.fill();
+
+            // 점선 차선
+            ctx.strokeStyle = '#64748b';
+            ctx.lineWidth = Math.max(2, canvas.width * 0.004);
+            ctx.setLineDash([15, 15]);
+            ctx.lineDashOffset = -now * 0.04 * (egoSpeed / 60);
+            ctx.beginPath();
+            ctx.moveTo(vpX, vpY);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // 거리 및 TTC 연산
+            if (vehicleApproaching) {
+                vehicleDistance -= dt * (egoSpeed * 0.35);
+                if (vehicleDistance < 4.0) vehicleDistance = 4.0;
+            } else {
+                vehicleDistance += (22.0 - vehicleDistance) * dt * 0.5;
+            }
+
+            const boxHeight = Math.max(35, (canvas.height * 1.4) / vehicleDistance);
+            const boxWidth = boxHeight * 1.2;
+            const carY = vpY + (canvas.height - vpY) * (1.0 - (vehicleDistance / 50.0));
+            const carX = vpX - boxWidth / 2;
+
+            const relSpeed = vehicleApproaching ? (egoSpeed * 0.8) / 3.6 : 0.1;
+            const ttc = relSpeed > 0.5 ? (vehicleDistance / relSpeed) : 99.0;
+
+            let threatLevel = 'SAFE';
+            if (ttc <= 1.5 || vehicleDistance < 8.0) threatLevel = 'CRITICAL';
+            else if (ttc <= 2.5 || vehicleDistance < 15.0) threatLevel = 'WARNING';
+
+            // 바운딩 박스
+            ctx.strokeStyle = threatLevel === 'CRITICAL' ? '#ef4444' : (threatLevel === 'WARNING' ? '#eab308' : '#22c55e');
+            ctx.lineWidth = 3;
+            ctx.strokeRect(carX, carY - boxHeight, boxWidth, boxHeight);
+
+            ctx.fillStyle = threatLevel === 'CRITICAL' ? '#ef4444' : (threatLevel === 'WARNING' ? '#eab308' : '#22c55e');
+            ctx.fillRect(carX, carY - boxHeight - 20, boxWidth, 20);
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 11px sans-serif';
+            ctx.fillText(`AHEAD | ${vehicleDistance.toFixed(1)}m | TTC: ${ttc > 20 ? '>10s' : ttc.toFixed(1) + 's'}`, carX + 4, carY - boxHeight - 6);
+
+            // 돌발 보행자
+            if (suddenObstacleActive) {
+                suddenObstacleX += (vpX - suddenObstacleX) * dt * 3.5;
+                const pedY = canvas.height * 0.75;
+                ctx.strokeStyle = '#ef4444';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(suddenObstacleX, pedY - 60, 30, 60);
+                ctx.fillStyle = '#ef4444';
+                ctx.fillRect(suddenObstacleX, pedY - 78, 110, 18);
+                ctx.fillStyle = '#fff';
+                ctx.fillText('⚠️ PEDESTRIAN CUT-IN', suddenObstacleX + 4, pedY - 65);
+                if (Math.abs(suddenObstacleX - vpX) < 40) threatLevel = 'CRITICAL';
+            }
+
+            // 비상 경보 팝업
+            if (threatLevel === 'CRITICAL') {
+                alertBanner.className = 'alert-banner critical';
+                alertBanner.innerText = suddenObstacleActive ? '🚨 위험! 보행자 무단횡단 감지!' : '🚨 위험! 전방 차량 충돌 위험! 감속하세요!';
+                playBuzzer(950, 'sawtooth', 0.1);
+            } else if (trafficSignalState === 'RED' && egoSpeed > 10) {
+                alertBanner.className = 'alert-banner warning';
+                alertBanner.innerText = '⚠️ 정지 신호 감지! 속도를 줄이세요.';
+            } else {
+                alertBanner.style.display = 'none';
+                vehicleApproaching = false;
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        requestAnimationFrame(renderLoop);
+    </script>
+</body>
+</html>
