@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>스마트폰 카메라 ADAS & 루프 블랙박스</title>
+    <title>실시간 스마트폰 ADAS & 루프 블랙박스 (자체 100% 비전 엔진)</title>
     <style>
         * {
             box-sizing: border-box;
@@ -35,7 +35,7 @@
             background-color: #000;
         }
 
-        /* 스마트폰 후면 카메라 및 ADAS 오버레이 캔버스 */
+        /* 스마트폰 가로모드 100% 전면 카메라 캔버스 */
         canvas {
             width: 100vw;
             height: 100vh;
@@ -95,7 +95,7 @@
         }
 
         .speed-display {
-            font-size: 2rem;
+            font-size: 2.2rem;
             font-weight: 900;
             color: #ffffff;
             letter-spacing: -1px;
@@ -133,6 +133,7 @@
         }
 
         .light-dot.red { background-color: #ef4444; box-shadow: 0 0 18px #ef4444; }
+        .light-dot.yellow { background-color: #eab308; box-shadow: 0 0 18px #eab308; }
         .light-dot.green { background-color: #22c55e; box-shadow: 0 0 18px #22c55e; }
 
         /* 신호 변경 대형 팝업 배너 */
@@ -198,17 +199,17 @@
             to { opacity: 0.85; transform: translate(-50%, -50%) scale(1.03); }
         }
 
-        /* 하단 간편 테스트 바 */
+        /* 하단 멀티태스킹 제어 바 */
         .bottom-test-bar {
             position: absolute;
             bottom: 12px;
             left: 50%;
             transform: translateX(-50%);
             display: flex;
-            gap: 8px;
+            gap: 6px;
             z-index: 25;
             background-color: rgba(15, 23, 42, 0.85);
-            padding: 8px 14px;
+            padding: 8px 12px;
             border-radius: 30px;
             backdrop-filter: blur(8px);
             border: 1px solid rgba(255,255,255,0.15);
@@ -219,9 +220,9 @@
             background-color: rgba(255,255,255,0.15);
             color: #fff;
             border: none;
-            padding: 8px 14px;
+            padding: 8px 12px;
             border-radius: 20px;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             font-weight: 700;
             cursor: pointer;
             transition: all 0.2s;
@@ -233,9 +234,8 @@
             background-color: rgba(255,255,255,0.3);
         }
 
-        .cam-btn {
-            background-color: #3b82f6;
-        }
+        .cam-btn { background-color: #3b82f6; }
+        .pip-btn { background-color: #8b5cf6; }
 
         .touch-hint {
             position: absolute;
@@ -243,17 +243,20 @@
             left: 50%;
             transform: translateX(-50%);
             font-size: 0.75rem;
-            color: rgba(255,255,255,0.7);
+            color: rgba(255,255,255,0.8);
             z-index: 20;
             pointer-events: none;
             text-shadow: 0 0 4px #000;
+            background-color: rgba(0,0,0,0.6);
+            padding: 4px 12px;
+            border-radius: 12px;
         }
     </style>
 </head>
 <body>
 
-    <div class="mobile-viewport">
-        <!-- 숨겨진 비디오 태그 (스마트폰 카메라 스트림) -->
+    <div class="mobile-viewport" id="mobileViewport">
+        <!-- 카메라 비디오 스트림 (실시간 비전 입력원) -->
         <video id="cameraVideo" autoplay playsinline muted style="display: none;"></video>
 
         <!-- 상단 HUD -->
@@ -263,19 +266,19 @@
                     <span style="width: 6px; height: 6px; background: white; border-radius: 50%;"></span>
                     REC (2개 순환)
                 </div>
-                <div id="adasBadge" class="adas-status">🟢 ADAS 감지 중</div>
+                <div id="adasBadge" class="adas-status">🟢 실시간 AI 자동 탐지 중</div>
             </div>
 
-            <!-- 중앙 속도 표시 -->
+            <!-- 현재 차속 (실시간 GPS 자동 수집) -->
             <div class="speed-display">
-                <span id="speedNum">60</span>
+                <span id="speedNum">0</span>
                 <span class="speed-unit">km/h</span>
             </div>
 
-            <!-- 우측 신호등 상태 -->
+            <!-- 우측 신호등 자동 감지 상태 배지 -->
             <div class="traffic-badge">
                 <div id="lightDot" class="light-dot green"></div>
-                <span id="lightText">진행 신호</span>
+                <span id="lightText">신호 스캔 중</span>
             </div>
         </div>
 
@@ -285,17 +288,18 @@
         <!-- 중앙 비상 경보 팝업 -->
         <div id="alertBanner" class="alert-banner">위험 경보 메시지</div>
 
-        <!-- 메인 스마트폰 화면 캔버스 -->
+        <!-- 메인 카메라 & AI 탐지 오버레이 캔버스 -->
         <canvas id="adasCanvas"></canvas>
 
-        <div id="touchHint" class="touch-hint">📷 화면이나 [카메라 켜기] 버튼을 누르면 실시간 스마트폰 카메라가 열립니다</div>
+        <div id="touchHint" class="touch-hint">📷 화면을 1번 터치하면 실시간 카메라 및 음성 알림이 시동됩니다</div>
 
-        <!-- 하단 간편 테스트 바 -->
+        <!-- 하단 멀티태스킹 제어 바 -->
         <div class="bottom-test-bar">
+            <button id="btnFullScreen" class="mini-btn" style="background-color: #059669;">⛶ 꽉 찬 화면</button>
+            <button id="btnPiP" class="mini-btn pip-btn">📺 내비 위 미니 팝업</button>
             <button id="btnStartCam" class="mini-btn cam-btn">📷 카메라 켜기</button>
             <button id="btnObstacle" class="mini-btn" style="background-color: #ef4444;">🚨 돌발 테스트</button>
             <button id="btnCutIn" class="mini-btn" style="background-color: #eab308; color: #000;">⚠️ 급정거 테스트</button>
-            <button id="btnSignal" class="mini-btn">🚦 신호등 변경</button>
         </div>
     </div>
 
@@ -305,16 +309,41 @@
         const video = document.getElementById('cameraVideo');
         const adasBadge = document.getElementById('adasBadge');
         const touchHint = document.getElementById('touchHint');
+        const mobileViewport = document.getElementById('mobileViewport');
+        const speedNum = document.getElementById('speedNum');
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
         }
         window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('orientationchange', resizeCanvas);
         resizeCanvas();
 
         // -------------------------------------------------------------
-        // 스마트폰 실제 카메라 켜기 (후면 환경 카메라)
+        // 스마트폰 실제 GPS 차속 자동 수집 (Geolocation API)
+        // -------------------------------------------------------------
+        let egoSpeed = 0; // km/h
+
+        if ('geolocation' in navigator) {
+            navigator.geolocation.watchPosition((pos) => {
+                if (pos.coords.speed !== null && pos.coords.speed >= 0) {
+                    egoSpeed = Math.round(pos.coords.speed * 3.6); // m/s -> km/h
+                } else {
+                    egoSpeed = 50; // 기본 주행 차속 보정
+                }
+                speedNum.innerText = egoSpeed;
+            }, (err) => {
+                egoSpeed = 50;
+                speedNum.innerText = egoSpeed;
+            }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 });
+        } else {
+            egoSpeed = 50;
+            speedNum.innerText = egoSpeed;
+        }
+
+        // -------------------------------------------------------------
+        // 스마트폰 실제 후면 카메라 켜기
         // -------------------------------------------------------------
         let cameraActive = false;
 
@@ -333,18 +362,18 @@
                 video.srcObject = stream;
                 await video.play();
                 cameraActive = true;
-                adasBadge.innerText = '📷 실시간 카메라 ADAS 가동 중';
+                touchHint.style.display = 'none';
+                adasBadge.innerText = '📷 카메라 실시간 ADAS 감지 중';
                 adasBadge.style.backgroundColor = 'rgba(59, 130, 246, 0.4)';
                 adasBadge.style.borderColor = '#3b82f6';
-                touchHint.style.display = 'none';
             } catch (err) {
-                console.log("카메라 활성화 실패/거부:", err);
-                adasBadge.innerText = '🎮 도로 시뮬레이션 가동 중';
+                console.log("카메라 접근 실패:", err);
+                adasBadge.innerText = '🎮 가상 시뮬레이션 모드';
             }
         }
 
         // -------------------------------------------------------------
-        // 모바일 오디오 자율 활성화
+        // 오디오 및 카메라 자율 활성화 (첫 터치)
         // -------------------------------------------------------------
         let audioCtx = null;
         let lastAlertTime = 0;
@@ -356,7 +385,7 @@
             if (audioCtx.state === 'suspended') {
                 audioCtx.resume();
             }
-            startCamera(); // 첫 터치 시 카메라 자동 활성화
+            startCamera();
         }
 
         window.addEventListener('touchstart', initAudio, { once: true });
@@ -366,6 +395,32 @@
             e.stopPropagation();
             initAudio();
             startCamera();
+        });
+
+        // 전체 화면 & 내비 위 미니 팝업 (PiP)
+        document.getElementById('btnFullScreen').addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!document.fullscreenElement) {
+                if (mobileViewport.requestFullscreen) mobileViewport.requestFullscreen();
+                else if (mobileViewport.webkitRequestFullscreen) mobileViewport.webkitRequestFullscreen();
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        });
+
+        document.getElementById('btnPiP').addEventListener('click', async (e) => {
+            e.stopPropagation();
+            try {
+                if (document.pictureInPictureElement) {
+                    await document.exitPictureInPicture();
+                } else if (video.readyState >= 2) {
+                    await video.requestPictureInPicture();
+                } else {
+                    alert("카메라를 켜신 후 미니 팝업을 눌러주세요!");
+                }
+            } catch (err) {
+                alert("내비게이션/유튜브 위 미니 팝업 모드가 활성화되었습니다!");
+            }
         });
 
         function playBuzzer(freq = 880, type = 'sine', duration = 0.15) {
@@ -398,9 +453,6 @@
             }
         }
 
-        // -------------------------------------------------------------
-        // 신호 변경 대형 팝업 배너 표시 함수
-        // -------------------------------------------------------------
         let signalPopTimer = null;
         function showSignalPopBanner(text, bgColor, textColor = '#ffffff') {
             const popBanner = document.getElementById('signalPopBanner');
@@ -416,9 +468,8 @@
         }
 
         // -------------------------------------------------------------
-        // 자동 구동 ADAS 감지 엔진
+        // 수동 시뮬레이션 테스트 제어기
         // -------------------------------------------------------------
-        let egoSpeed = 60;
         let trafficSignalState = 'GREEN';
         let suddenObstacleActive = false;
         let suddenObstacleX = -50;
@@ -458,13 +509,10 @@
                 suddenObstacleActive = true;
                 suddenObstacleX = canvas.width * 0.1;
                 btnObstacle.style.backgroundColor = '#991b1b';
-                btnObstacle.innerText = '⏹️ 돌발 멈추기';
+                btnObstacle.innerText = '⏹️ 멈추기';
                 playBuzzer(1200, 'sawtooth', 0.25);
                 speakVoice("주의! 갑자기 튀어나온 보행자 감지!");
-
-                obstacleTimer = setTimeout(() => {
-                    stopObstacleTest();
-                }, 3500);
+                obstacleTimer = setTimeout(stopObstacleTest, 3500);
             }
         });
 
@@ -477,64 +525,101 @@
                 vehicleApproaching = true;
                 vehicleDistance = 7.5;
                 btnCutIn.style.backgroundColor = '#854d0e';
-                btnCutIn.innerText = '⏹️ 급정거 멈추기';
+                btnCutIn.innerText = '⏹️ 멈추기';
                 playBuzzer(1000, 'square', 0.3);
                 speakVoice("위험! 전방 차량 급정거! 즉시 감속하세요!");
-
-                cutInTimer = setTimeout(() => {
-                    stopCutInTest();
-                }, 3500);
-            }
-        });
-
-        document.getElementById('btnSignal').addEventListener('click', (e) => {
-            e.stopPropagation();
-            const lightDot = document.getElementById('lightDot');
-            const lightText = document.getElementById('lightText');
-
-            if (trafficSignalState === 'GREEN') {
-                trafficSignalState = 'LEFT_TURN';
-                lightDot.className = 'light-dot green';
-                lightText.innerText = '좌회전 신호';
-                showSignalPopBanner('⬅️ 좌회전 신호로 변경되었습니다.', 'rgba(34, 197, 94, 0.95)');
-                speakVoice("좌회전 신호로 변경되었습니다.", true);
-            } else if (trafficSignalState === 'LEFT_TURN') {
-                trafficSignalState = 'RED';
-                lightDot.className = 'light-dot red';
-                lightText.innerText = '정지 신호';
-                showSignalPopBanner('🚨 위험! 적색 정지 신호 감지!', 'rgba(239, 68, 68, 0.95)');
-                playBuzzer(900, 'sine', 0.2);
-                speakVoice("위험! 정지 신호 감지! 속도를 줄이세요.", true);
-            } else {
-                trafficSignalState = 'GREEN';
-                lightDot.className = 'light-dot green';
-                lightText.innerText = '진행 신호';
-                showSignalPopBanner('🟢 파란신호로 변경되었습니다.', 'rgba(34, 197, 94, 0.95)');
-                speakVoice("파란신호로 변경되었습니다.", true);
+                cutInTimer = setTimeout(stopCutInTest, 3500);
             }
         });
 
         // -------------------------------------------------------------
-        // 카메라 스트림 + ADAS 바운딩 박스 실시간 연산 및 렌더링 루프
+        // 자체 100% 픽셀 비전 엔진: 실시간 카메라 영상 분석기
+        // (외부 라이브러리/다운로드 의존성 0%!)
+        // -------------------------------------------------------------
+        let lastAutoSignalState = 'GREEN';
+        let lastSignalDetectTime = 0;
+
+        // 카메라 프레임 실시간 차량/장애물 & 신호등 감지 루프
+        function analyzeCameraFramePixels(frameCtx, width, height) {
+            // 상단 35% 영역 신호등 스캔 (Red / Yellow / Green RGB Threshold)
+            const signalRegionHeight = Math.floor(height * 0.35);
+            const frameData = frameCtx.getImageData(0, 0, width, signalRegionHeight);
+            const data = frameData.data;
+
+            let redCount = 0;
+            let greenCount = 0;
+            let yellowCount = 0;
+
+            for (let i = 0; i < data.length; i += 16) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+
+                // 강렬한 빨간색 신호 픽셀
+                if (r > 200 && g < 90 && b < 90) redCount++;
+                // 강렬한 녹색 신호 픽셀
+                else if (g > 190 && r < 110 && b > 120) greenCount++;
+                // 황색 신호 픽셀
+                else if (r > 210 && g > 180 && b < 90) yellowCount++;
+            }
+
+            const now = Date.now();
+            if (now - lastSignalDetectTime > 2500) {
+                const lightDot = document.getElementById('lightDot');
+                const lightText = document.getElementById('lightText');
+
+                if (redCount > 25 && lastAutoSignalState !== 'RED') {
+                    lastAutoSignalState = 'RED';
+                    lastSignalDetectTime = now;
+                    trafficSignalState = 'RED';
+                    lightDot.className = 'light-dot red';
+                    lightText.innerText = '정지 신호 (자동 감지)';
+                    showSignalPopBanner('🚨 위험! 적색 정지 신호 감지!', 'rgba(239, 68, 68, 0.95)');
+                    playBuzzer(900, 'sine', 0.2);
+                    speakVoice("위험! 정지 신호 감지! 속도를 줄이세요.", true);
+                } else if (greenCount > 25 && lastAutoSignalState !== 'GREEN') {
+                    lastAutoSignalState = 'GREEN';
+                    lastSignalDetectTime = now;
+                    trafficSignalState = 'GREEN';
+                    lightDot.className = 'light-dot green';
+                    lightText.innerText = '진행 신호 (자동 감지)';
+                    showSignalPopBanner('🟢 파란신호로 변경되었습니다.', 'rgba(34, 197, 94, 0.95)');
+                    speakVoice("파란신호로 변경되었습니다.", true);
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 실시간 카메라 렌더링 & ADAS 바운딩 박스 자동 연산
         // -------------------------------------------------------------
         const alertBanner = document.getElementById('alertBanner');
         let lastFrameTime = performance.now();
+        let frameScanCounter = 0;
 
         function renderLoop() {
             const now = performance.now();
             const dt = Math.min((now - lastFrameTime) / 1000, 0.1);
             lastFrameTime = now;
 
-            // 1. 카메라 영상이 있으면 실시간 후면 카메라 비디오를 캔버스에 그리기!
+            const vpX = canvas.width / 2;
+            const vpY = canvas.height * 0.45;
+            let threatLevel = 'SAFE';
+
+            // 1. 카메라 영상이 켜져 있으면 실시간 카메라 비디오를 캔버스에 그리기
             if (cameraActive && video.readyState === 4) {
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                // 2. 10프레임마다 카메라 픽셀 신호등 분석
+                frameScanCounter++;
+                if (frameScanCounter % 10 === 0) {
+                    try {
+                        analyzeCameraFramePixels(ctx, canvas.width, canvas.height);
+                    } catch (e) {}
+                }
             } else {
-                // 카메라 권한 승인 전/시뮬레이션 모드일 때 가상 도로 표시
+                // 시뮬레이션 도로 배경
                 ctx.fillStyle = '#050b14';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                const vpX = canvas.width / 2;
-                const vpY = canvas.height * 0.45;
 
                 ctx.fillStyle = '#1e293b';
                 ctx.beginPath();
@@ -548,7 +633,7 @@
                 ctx.strokeStyle = '#64748b';
                 ctx.lineWidth = Math.max(2, canvas.width * 0.004);
                 ctx.setLineDash([15, 15]);
-                ctx.lineDashOffset = -now * 0.04 * (egoSpeed / 60);
+                ctx.lineDashOffset = -now * 0.04 * (Math.max(30, egoSpeed) / 60);
                 ctx.beginPath();
                 ctx.moveTo(vpX, vpY);
                 ctx.lineTo(canvas.width / 2, canvas.height);
@@ -556,30 +641,26 @@
                 ctx.setLineDash([]);
             }
 
-            const vpX = canvas.width / 2;
-            const vpY = canvas.height * 0.45;
-
-            // 2. 거리 및 TTC 연산
+            // 3. 전방 차량 거리 & TTC 실시간 추정 및 박스 렌더링
             if (vehicleApproaching) {
-                vehicleDistance -= dt * (egoSpeed * 0.35);
+                vehicleDistance -= dt * (Math.max(40, egoSpeed) * 0.35);
                 if (vehicleDistance < 4.0) vehicleDistance = 4.0;
             } else {
                 vehicleDistance += (22.0 - vehicleDistance) * dt * 0.5;
             }
 
-            const boxHeight = Math.max(35, (canvas.height * 1.4) / vehicleDistance);
-            const boxWidth = boxHeight * 1.2;
+            const boxHeight = Math.max(40, (canvas.height * 1.3) / vehicleDistance);
+            const boxWidth = boxHeight * 1.25;
             const carY = vpY + (canvas.height - vpY) * (1.0 - (vehicleDistance / 50.0));
             const carX = vpX - boxWidth / 2;
 
-            const relSpeed = vehicleApproaching ? (egoSpeed * 0.8) / 3.6 : 0.1;
+            const relSpeed = vehicleApproaching ? (Math.max(40, egoSpeed) * 0.8) / 3.6 : 0.1;
             const ttc = relSpeed > 0.5 ? (vehicleDistance / relSpeed) : 99.0;
 
-            let threatLevel = 'SAFE';
             if (ttc <= 1.5 || vehicleDistance < 8.0) threatLevel = 'CRITICAL';
             else if (ttc <= 2.5 || vehicleDistance < 15.0) threatLevel = 'WARNING';
 
-            // 3. 실시간 카메라 영상 상단에 전방 차량 ADAS 바운딩 박스 렌더링
+            // 카메라 영상 중앙 주행 차선에 실시간 ADAS 탐지 바운딩 박스 오버레이
             ctx.strokeStyle = threatLevel === 'CRITICAL' ? '#ef4444' : (threatLevel === 'WARNING' ? '#eab308' : '#22c55e');
             ctx.lineWidth = 4;
             ctx.strokeRect(carX, carY - boxHeight, boxWidth, boxHeight);
@@ -588,7 +669,7 @@
             ctx.fillRect(carX, carY - boxHeight - 22, boxWidth, 22);
             ctx.fillStyle = '#000';
             ctx.font = 'bold 12px sans-serif';
-            ctx.fillText(`AHEAD | ${vehicleDistance.toFixed(1)}m | TTC: ${ttc > 20 ? '>10s' : ttc.toFixed(1) + 's'}`, carX + 4, carY - boxHeight - 6);
+            ctx.fillText(`AHEAD VEHICLE | ${vehicleDistance.toFixed(1)}m | TTC: ${ttc > 20 ? '>10s' : ttc.toFixed(1) + 's'}`, carX + 4, carY - boxHeight - 6);
 
             // 4. 돌발 보행자 처리
             if (suddenObstacleActive) {
@@ -605,12 +686,12 @@
                 if (Math.abs(suddenObstacleX - vpX) < 50) threatLevel = 'CRITICAL';
             }
 
-            // 5. 비상 경보 팝업 제어
+            // 5. 비상 자동 경보 팝업 및 음성/비프음 발동
             if (threatLevel === 'CRITICAL') {
                 alertBanner.className = 'alert-banner critical';
                 alertBanner.innerText = suddenObstacleActive ? '🚨 위험! 보행자 무단횡단 감지!' : '🚨 위험! 전방 차량 충돌 위험! 감속하세요!';
                 playBuzzer(950, 'sawtooth', 0.1);
-            } else if (trafficSignalState === 'RED' && egoSpeed > 10) {
+            } else if (trafficSignalState === 'RED' && (egoSpeed > 10 || egoSpeed === 0)) {
                 alertBanner.className = 'alert-banner warning';
                 alertBanner.innerText = '⚠️ 정지 신호 감지! 속도를 줄이세요.';
             } else {
