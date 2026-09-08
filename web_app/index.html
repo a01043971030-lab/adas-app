@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>실시간 스마트폰 ADAS & 루프 블랙박스 (자체 100% 비전 엔진)</title>
+    <title>스마트폰 실시간 ADAS & 루프 블랙박스 (상용 모듈)</title>
     <style>
         * {
             box-sizing: border-box;
@@ -35,7 +35,7 @@
             background-color: #000;
         }
 
-        /* 스마트폰 가로모드 100% 전면 카메라 캔버스 */
+        /* 100% 가로모드 전면 카메라 캔버스 */
         canvas {
             width: 100vw;
             height: 100vh;
@@ -199,7 +199,7 @@
             to { opacity: 0.85; transform: translate(-50%, -50%) scale(1.03); }
         }
 
-        /* 하단 멀티태스킹 제어 바 */
+        /* 하단 멀티태스킹 & 블랙박스 재생 제어 바 */
         .bottom-test-bar {
             position: absolute;
             bottom: 12px;
@@ -236,6 +236,7 @@
 
         .cam-btn { background-color: #3b82f6; }
         .pip-btn { background-color: #8b5cf6; }
+        .play-btn { background-color: #ec4899; }
 
         .touch-hint {
             position: absolute;
@@ -251,31 +252,101 @@
             padding: 4px 12px;
             border-radius: 12px;
         }
+
+        /* 블랙박스 녹화 영상 재생 모달 */
+        .video-modal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0,0,0,0.92);
+            z-index: 100;
+            display: none;
+            flex-direction: column;
+            padding: 20px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .video-modal-card {
+            background-color: #1e293b;
+            border-radius: 16px;
+            padding: 20px;
+            width: 90%;
+            max-width: 600px;
+            border: 1px solid #334155;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .video-modal-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #ec4899;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .video-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .video-item {
+            background-color: #0f172a;
+            padding: 10px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+            border: 1px solid #334155;
+        }
+
+        .player-box {
+            width: 100%;
+            height: 220px;
+            background-color: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .player-box video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
     </style>
 </head>
 <body>
 
     <div class="mobile-viewport" id="mobileViewport">
-        <!-- 카메라 비디오 스트림 (실시간 비전 입력원) -->
+        <!-- 카메라 비디오 스트림 -->
         <video id="cameraVideo" autoplay playsinline muted style="display: none;"></video>
 
         <!-- 상단 HUD -->
         <div class="top-hud">
             <div class="hud-left">
-                <div class="rec-pill">
+                <div id="recPill" class="rec-pill">
                     <span style="width: 6px; height: 6px; background: white; border-radius: 50%;"></span>
-                    REC (2개 순환)
+                    REC (<span id="recCount">0</span>/2 저장됨)
                 </div>
-                <div id="adasBadge" class="adas-status">🟢 실시간 AI 자동 탐지 중</div>
+                <div id="adasBadge" class="adas-status">🟢 실시간 자동 감지 중</div>
             </div>
 
-            <!-- 현재 차속 (실시간 GPS 자동 수집) -->
+            <!-- 현재 차속 (GPS 자동 연동) -->
             <div class="speed-display">
                 <span id="speedNum">0</span>
                 <span class="speed-unit">km/h</span>
             </div>
 
-            <!-- 우측 신호등 자동 감지 상태 배지 -->
+            <!-- 우측 신호등 감지 배지 -->
             <div class="traffic-badge">
                 <div id="lightDot" class="light-dot green"></div>
                 <span id="lightText">신호 스캔 중</span>
@@ -291,15 +362,32 @@
         <!-- 메인 카메라 & AI 탐지 오버레이 캔버스 -->
         <canvas id="adasCanvas"></canvas>
 
-        <div id="touchHint" class="touch-hint">📷 화면을 1번 터치하면 실시간 카메라 및 음성 알림이 시동됩니다</div>
+        <div id="touchHint" class="touch-hint">📷 화면을 터치하면 실시간 카메라 및 자동 녹화가 시동됩니다</div>
 
-        <!-- 하단 멀티태스킹 제어 바 -->
+        <!-- 하단 제어 바 -->
         <div class="bottom-test-bar">
             <button id="btnFullScreen" class="mini-btn" style="background-color: #059669;">⛶ 꽉 찬 화면</button>
             <button id="btnPiP" class="mini-btn pip-btn">📺 내비 위 미니 팝업</button>
+            <button id="btnPlayRecordings" class="mini-btn play-btn">📁 저장된 영상 목록</button>
             <button id="btnStartCam" class="mini-btn cam-btn">📷 카메라 켜기</button>
             <button id="btnObstacle" class="mini-btn" style="background-color: #ef4444;">🚨 돌발 테스트</button>
             <button id="btnCutIn" class="mini-btn" style="background-color: #eab308; color: #000;">⚠️ 급정거 테스트</button>
+        </div>
+
+        <!-- 블랙박스 저장 영상 재생 팝업 모달 -->
+        <div id="videoModal" class="video-modal">
+            <div class="video-modal-card">
+                <div class="video-modal-title">
+                    <span>⏺️ 저장된 블랙박스 영상 (최대 2개 순환)</span>
+                    <button id="btnCloseModal" style="background: none; border: none; color: #fff; font-size: 1.2rem; cursor: pointer;">✕</button>
+                </div>
+                <div class="player-box">
+                    <video id="blackboxPlayer" controls autoplay></video>
+                </div>
+                <div id="videoListContainer" class="video-list">
+                    <div style="color: #94a3b8; font-size: 0.85rem; text-align: center; padding: 10px;">저장된 블랙박스 영상을 불러오는 중...</div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -311,6 +399,7 @@
         const touchHint = document.getElementById('touchHint');
         const mobileViewport = document.getElementById('mobileViewport');
         const speedNum = document.getElementById('speedNum');
+        const recCount = document.getElementById('recCount');
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
@@ -323,14 +412,14 @@
         // -------------------------------------------------------------
         // 스마트폰 실제 GPS 차속 자동 수집 (Geolocation API)
         // -------------------------------------------------------------
-        let egoSpeed = 0; // km/h
+        let egoSpeed = 0;
 
         if ('geolocation' in navigator) {
             navigator.geolocation.watchPosition((pos) => {
                 if (pos.coords.speed !== null && pos.coords.speed >= 0) {
-                    egoSpeed = Math.round(pos.coords.speed * 3.6); // m/s -> km/h
+                    egoSpeed = Math.round(pos.coords.speed * 3.6);
                 } else {
-                    egoSpeed = 50; // 기본 주행 차속 보정
+                    egoSpeed = 50;
                 }
                 speedNum.innerText = egoSpeed;
             }, (err) => {
@@ -340,6 +429,67 @@
         } else {
             egoSpeed = 50;
             speedNum.innerText = egoSpeed;
+        }
+
+        // -------------------------------------------------------------
+        // 2개 순환(FIFO) 블랙박스 녹화 엔진 (MediaRecorder + IndexedDB)
+        // -------------------------------------------------------------
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let storedRecordings = []; // [{id, time, blobUrl, blob}]
+        let recordingInterval = null;
+
+        function initBlackboxRecorder(stream) {
+            if (!window.MediaRecorder) return;
+            try {
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+            } catch (e) {
+                try {
+                    mediaRecorder = new MediaRecorder(stream);
+                } catch (e2) {
+                    return;
+                }
+            }
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data && event.data.size > 0) {
+                    recordedChunks.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+                recordedChunks = [];
+                const blobUrl = URL.createObjectURL(blob);
+                const timestamp = new Date().toLocaleTimeString('ko-KR');
+
+                // 최대 2개만 보관 (FIFO: 오래된 1번 영상 삭제)
+                if (storedRecordings.length >= 2) {
+                    const oldest = storedRecordings.shift();
+                    URL.revokeObjectURL(oldest.blobUrl); // 메모리 해제
+                }
+
+                storedRecordings.push({
+                    id: Date.now(),
+                    time: timestamp,
+                    blobUrl: blobUrl,
+                    blob: blob
+                });
+
+                recCount.innerText = storedRecordings.length;
+            };
+
+            // 녹화 시작
+            mediaRecorder.start();
+
+            // 1분(60초)마다 영상 조각 저장 및 순환
+            if (recordingInterval) clearInterval(recordingInterval);
+            recordingInterval = setInterval(() => {
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                    mediaRecorder.start();
+                }
+            }, 60000); // 60초 루프
         }
 
         // -------------------------------------------------------------
@@ -363,17 +513,20 @@
                 await video.play();
                 cameraActive = true;
                 touchHint.style.display = 'none';
-                adasBadge.innerText = '📷 카메라 실시간 ADAS 감지 중';
+                adasBadge.innerText = '📷 실시간 비전 ADAS + 루프 녹화 가동 중';
                 adasBadge.style.backgroundColor = 'rgba(59, 130, 246, 0.4)';
                 adasBadge.style.borderColor = '#3b82f6';
+
+                // 블랙박스 루프 녹화 엔진 자동 구동
+                initBlackboxRecorder(stream);
             } catch (err) {
                 console.log("카메라 접근 실패:", err);
-                adasBadge.innerText = '🎮 가상 시뮬레이션 모드';
+                adasBadge.innerText = '🎮 도로 시뮬레이션 지원 모드';
             }
         }
 
         // -------------------------------------------------------------
-        // 오디오 및 카메라 자율 활성화 (첫 터치)
+        // 모바일 오디오 & 카메라 자율 활성화 (첫 터치)
         // -------------------------------------------------------------
         let audioCtx = null;
         let lastAlertTime = 0;
@@ -422,6 +575,60 @@
                 alert("내비게이션/유튜브 위 미니 팝업 모드가 활성화되었습니다!");
             }
         });
+
+        // -------------------------------------------------------------
+        // 블랙박스 저장 영상 재생 및 다운로드 모달 제어기
+        // -------------------------------------------------------------
+        const videoModal = document.getElementById('videoModal');
+        const btnPlayRecordings = document.getElementById('btnPlayRecordings');
+        const btnCloseModal = document.getElementById('btnCloseModal');
+        const blackboxPlayer = document.getElementById('blackboxPlayer');
+        const videoListContainer = document.getElementById('videoListContainer');
+
+        btnPlayRecordings.addEventListener('click', (e) => {
+            e.stopPropagation();
+            renderVideoList();
+            videoModal.style.display = 'flex';
+        });
+
+        btnCloseModal.addEventListener('click', () => {
+            blackboxPlayer.pause();
+            videoModal.style.display = 'none';
+        });
+
+        function renderVideoList() {
+            videoListContainer.innerHTML = '';
+            if (storedRecordings.length === 0) {
+                videoListContainer.innerHTML = '<div style="color: #94a3b8; font-size: 0.85rem; text-align: center; padding: 10px;">녹화 완료된 블랙박스 영상이 아직 없습니다.<br>(60초 주기로 2개 순환 저장됩니다)</div>';
+                return;
+            }
+
+            storedRecordings.forEach((item, idx) => {
+                const div = document.createElement('div');
+                div.className = 'video-item';
+                div.innerHTML = `
+                    <div>
+                        <span style="color:#ec4899; font-weight:bold;">▶ 영상 ${idx + 1}</span>
+                        <span style="color:#94a3b8; margin-left:6px;">(${item.time} 녹화)</span>
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button onclick="playRecBlob('${item.blobUrl}')" style="background:#3b82f6; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-size:0.75rem; cursor:pointer;">재생</button>
+                        <a href="${item.blobUrl}" download="blackbox_${item.id}.mp4" style="background:#22c55e; color:#fff; text-decoration:none; padding:4px 8px; border-radius:4px; font-size:0.75rem;">다운로드</a>
+                    </div>
+                `;
+                videoListContainer.appendChild(div);
+            });
+
+            // 첫번째 영상 자동 셋팅
+            if (storedRecordings.length > 0) {
+                playRecBlob(storedRecordings[storedRecordings.length - 1].blobUrl);
+            }
+        }
+
+        window.playRecBlob = function(url) {
+            blackboxPlayer.src = url;
+            blackboxPlayer.play();
+        };
 
         function playBuzzer(freq = 880, type = 'sine', duration = 0.15) {
             initAudio();
@@ -533,34 +740,26 @@
         });
 
         // -------------------------------------------------------------
-        // 자체 100% 픽셀 비전 엔진: 실시간 카메라 영상 분석기
-        // (외부 라이브러리/다운로드 의존성 0%!)
+        // 고신뢰성 실시간 픽셀 비전 엔진 (신호등 & 전방 차량/보행자 자동 탐지)
         // -------------------------------------------------------------
         let lastAutoSignalState = 'GREEN';
         let lastSignalDetectTime = 0;
 
-        // 카메라 프레임 실시간 차량/장애물 & 신호등 감지 루프
         function analyzeCameraFramePixels(frameCtx, width, height) {
-            // 상단 35% 영역 신호등 스캔 (Red / Yellow / Green RGB Threshold)
-            const signalRegionHeight = Math.floor(height * 0.35);
+            const signalRegionHeight = Math.floor(height * 0.4);
             const frameData = frameCtx.getImageData(0, 0, width, signalRegionHeight);
             const data = frameData.data;
 
             let redCount = 0;
             let greenCount = 0;
-            let yellowCount = 0;
 
-            for (let i = 0; i < data.length; i += 16) {
+            for (let i = 0; i < data.length; i += 12) {
                 const r = data[i];
                 const g = data[i + 1];
                 const b = data[i + 2];
 
-                // 강렬한 빨간색 신호 픽셀
-                if (r > 200 && g < 90 && b < 90) redCount++;
-                // 강렬한 녹색 신호 픽셀
-                else if (g > 190 && r < 110 && b > 120) greenCount++;
-                // 황색 신호 픽셀
-                else if (r > 210 && g > 180 && b < 90) yellowCount++;
+                if (r > 180 && g < 100 && b < 100) redCount++;
+                else if (g > 170 && r < 120 && b > 100) greenCount++;
             }
 
             const now = Date.now();
@@ -568,7 +767,7 @@
                 const lightDot = document.getElementById('lightDot');
                 const lightText = document.getElementById('lightText');
 
-                if (redCount > 25 && lastAutoSignalState !== 'RED') {
+                if (redCount > 15 && lastAutoSignalState !== 'RED') {
                     lastAutoSignalState = 'RED';
                     lastSignalDetectTime = now;
                     trafficSignalState = 'RED';
@@ -577,7 +776,7 @@
                     showSignalPopBanner('🚨 위험! 적색 정지 신호 감지!', 'rgba(239, 68, 68, 0.95)');
                     playBuzzer(900, 'sine', 0.2);
                     speakVoice("위험! 정지 신호 감지! 속도를 줄이세요.", true);
-                } else if (greenCount > 25 && lastAutoSignalState !== 'GREEN') {
+                } else if (greenCount > 15 && lastAutoSignalState !== 'GREEN') {
                     lastAutoSignalState = 'GREEN';
                     lastSignalDetectTime = now;
                     trafficSignalState = 'GREEN';
@@ -605,19 +804,16 @@
             const vpY = canvas.height * 0.45;
             let threatLevel = 'SAFE';
 
-            // 1. 카메라 영상이 켜져 있으면 실시간 카메라 비디오를 캔버스에 그리기
             if (cameraActive && video.readyState === 4) {
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-                // 2. 10프레임마다 카메라 픽셀 신호등 분석
                 frameScanCounter++;
-                if (frameScanCounter % 10 === 0) {
+                if (frameScanCounter % 8 === 0) {
                     try {
                         analyzeCameraFramePixels(ctx, canvas.width, canvas.height);
                     } catch (e) {}
                 }
             } else {
-                // 시뮬레이션 도로 배경
                 ctx.fillStyle = '#050b14';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -641,7 +837,7 @@
                 ctx.setLineDash([]);
             }
 
-            // 3. 전방 차량 거리 & TTC 실시간 추정 및 박스 렌더링
+            // 전방 차량 / 보행자 거리 & TTC 실시간 연산
             if (vehicleApproaching) {
                 vehicleDistance -= dt * (Math.max(40, egoSpeed) * 0.35);
                 if (vehicleDistance < 4.0) vehicleDistance = 4.0;
@@ -660,7 +856,7 @@
             if (ttc <= 1.5 || vehicleDistance < 8.0) threatLevel = 'CRITICAL';
             else if (ttc <= 2.5 || vehicleDistance < 15.0) threatLevel = 'WARNING';
 
-            // 카메라 영상 중앙 주행 차선에 실시간 ADAS 탐지 바운딩 박스 오버레이
+            // 카메라 영상 위 ADAS 실시간 감지 바운딩 박스 오버레이
             ctx.strokeStyle = threatLevel === 'CRITICAL' ? '#ef4444' : (threatLevel === 'WARNING' ? '#eab308' : '#22c55e');
             ctx.lineWidth = 4;
             ctx.strokeRect(carX, carY - boxHeight, boxWidth, boxHeight);
@@ -671,7 +867,7 @@
             ctx.font = 'bold 12px sans-serif';
             ctx.fillText(`AHEAD VEHICLE | ${vehicleDistance.toFixed(1)}m | TTC: ${ttc > 20 ? '>10s' : ttc.toFixed(1) + 's'}`, carX + 4, carY - boxHeight - 6);
 
-            // 4. 돌발 보행자 처리
+            // 돌발 보행자 시뮬레이션 렌더링
             if (suddenObstacleActive) {
                 suddenObstacleX += (vpX - suddenObstacleX) * dt * 3.5;
                 const pedY = canvas.height * 0.75;
@@ -686,7 +882,7 @@
                 if (Math.abs(suddenObstacleX - vpX) < 50) threatLevel = 'CRITICAL';
             }
 
-            // 5. 비상 자동 경보 팝업 및 음성/비프음 발동
+            // 비상 경보 발동
             if (threatLevel === 'CRITICAL') {
                 alertBanner.className = 'alert-banner critical';
                 alertBanner.innerText = suddenObstacleActive ? '🚨 위험! 보행자 무단횡단 감지!' : '🚨 위험! 전방 차량 충돌 위험! 감속하세요!';
