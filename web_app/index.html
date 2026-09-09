@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>상용 ADAS & 단속카메라 음성 알림 통합 시스템</title>
+    <title>상용 ADAS & 내비게이션 완벽 터치 토글 시스템</title>
     <!-- Leaflet.js 실시간 지도 & 경로 엔진 -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -297,8 +297,6 @@
             backdrop-filter: blur(12px);
             border: 1.5px solid rgba(59, 130, 246, 0.5);
             box-shadow: 0 6px 20px rgba(0,0,0,0.8);
-            cursor: move;
-            touch-action: none;
             white-space: nowrap;
         }
 
@@ -313,6 +311,7 @@
             font-size: 0.65rem;
             font-weight: bold;
             cursor: grab;
+            touch-action: none;
         }
 
         .mini-btn {
@@ -606,9 +605,10 @@
         resizeCanvas();
 
         // -------------------------------------------------------------
-        // 🖐️ 터치 드래그 이동 메뉴바
+        // 🖐️ 터치 드래그 이동 (드래그 핸들에만 바인딩)
         // -------------------------------------------------------------
         const draggableMenu = document.getElementById('draggableMenu');
+        const dragHandle = document.getElementById('dragHandle');
         const btnHideMenu = document.getElementById('btnHideMenu');
 
         let isDragging = false;
@@ -651,11 +651,12 @@
 
         function stopDrag() { isDragging = false; }
 
-        draggableMenu.addEventListener('touchstart', startDrag, { passive: true });
+        // 드래그 핸들에만 터치 드래그 바인딩 (버튼 터치 클릭 간섭 100% 방지)
+        dragHandle.addEventListener('touchstart', startDrag, { passive: true });
         window.addEventListener('touchmove', moveDrag, { passive: true });
         window.addEventListener('touchend', stopDrag);
 
-        draggableMenu.addEventListener('mousedown', startDrag);
+        dragHandle.addEventListener('mousedown', startDrag);
         window.addEventListener('mousemove', moveDrag);
         window.addEventListener('mouseup', stopDrag);
 
@@ -665,7 +666,7 @@
         });
 
         // -------------------------------------------------------------
-        // 🗺️ 내비게이션 ON / OFF 토글 스위치
+        // 🗺️ 내비게이션 ON / OFF 토글 스위치 (100% 터치 작동 보장)
         // -------------------------------------------------------------
         let naviPowerOn = false;
         const btnNaviToggle = document.getElementById('btnNaviToggle');
@@ -674,23 +675,32 @@
         const naviTurnBanner = document.getElementById('naviTurnBanner');
         const naviMapContainer = document.getElementById('naviMapContainer');
 
-        btnNaviToggle.addEventListener('click', (e) => {
-            e.stopPropagation();
+        function toggleNaviPower(e) {
+            if (e) e.stopPropagation();
             if (naviPowerOn) {
+                // 내비 끄기 (OFF)
                 naviPowerOn = false;
                 btnNaviToggle.className = 'mini-btn navi-btn-off';
                 btnNaviToggle.innerText = '🗺️ 내비 OFF';
 
                 naviTurnBanner.style.display = 'none';
                 naviMapContainer.style.display = 'none';
-                speakVoice("내비게이션을 종료합니다. 이동식/고정식 단속 카메라 및 ADAS 모드로 가동합니다.", true);
+                speakVoice("내비게이션을 종료합니다. 이동식/고정식 단속 카메라 및 순수 ADAS 모드로 전환합니다.", true);
             } else {
+                // 내비 켜기 (ON)
                 naviPowerOn = true;
                 btnNaviToggle.className = 'mini-btn navi-btn-on';
                 btnNaviToggle.innerText = '🗺️ 내비 ON';
 
                 naviSearchModal.style.display = 'flex';
+                speakVoice("내비게이션 모드가 켜졌습니다. 목적지를 선택해주세요.", true);
             }
+        }
+
+        btnNaviToggle.addEventListener('click', toggleNaviPower);
+        btnNaviToggle.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            toggleNaviPower(e);
         });
 
         btnCloseNaviModal.addEventListener('click', () => {
@@ -780,7 +790,7 @@
 
         function triggerSpeedCameraAlert(type, speedLimit = 50) {
             const now = Date.now();
-            if (now - lastCameraAlertTime < 8000) return; // 8초 데시벨 쿨다운
+            if (now - lastCameraAlertTime < 8000) return;
             lastCameraAlertTime = now;
 
             if (type === 'FIXED') {
@@ -795,9 +805,7 @@
                 speakVoice(`주의! 이동식 과속 단속 카메라 위험 구간입니다. 안전 운전하세요.`, true);
             }
 
-            setTimeout(() => {
-                cameraPopBanner.style.display = 'none';
-            }, 3500);
+            setTimeout(() => { cameraPopBanner.style.display = 'none'; }, 3500);
         }
 
         // -------------------------------------------------------------
@@ -818,15 +826,11 @@
                 }
                 speedNum.innerText = egoSpeed;
 
-                // 주기적 고정식 / 이동식 단속 카메라 자동 음성 알림
                 const now = Date.now();
                 if (programRunning && now - lastGpsCheckTime > 12000) {
                     lastGpsCheckTime = now;
-                    if (egoSpeed > 55) {
-                        triggerSpeedCameraAlert('FIXED', 50);
-                    } else {
-                        triggerSpeedCameraAlert('MOBILE', 50);
-                    }
+                    if (egoSpeed > 55) { triggerSpeedCameraAlert('FIXED', 50); }
+                    else { triggerSpeedCameraAlert('MOBILE', 50); }
                 }
 
                 if (naviPowerOn && map && userMarker) {
@@ -932,14 +936,13 @@
 
                     initBlackboxRecorder(cameraStream);
                     speakVoice("실시간 ADAS 및 단속 카메라 감지가 시작되었습니다.");
-                } catch (err) {
-                    alert("카메라 권한을 승인해주세요!");
-                }
+                } catch (err) { alert("카메라 권한을 승인해주세요!"); }
             }
         }
 
-        btnPowerToggle.addEventListener('click', (e) => {
-            e.stopPropagation();
+        btnPowerToggle.addEventListener('click', toggleProgramPower);
+        btnPowerToggle.addEventListener('touchend', (e) => {
+            e.preventDefault();
             toggleProgramPower();
         });
 
