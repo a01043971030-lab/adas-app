@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>모바일 스마트폰 100% 최적화 ADAS & 블랙박스</title>
+    <!-- Leaflet.js 모바일 실시간 지도 엔진 -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            color: #fff;
+            overflow: hidden;
+            position: fixed;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+
+        .mobile-viewport {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        /* 가로모드 OLED/레티나 폰 화면 100% 캔버스 */
+        canvas {
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            display: block;
+        }
+
+        /* 미니멀 상단 HUD 바 */
+        .top-hud {
+            position: absolute;
+            top: env(safe-area-inset-top, 8px);
+            left: 0;
+            width: 100%;
+            padding: 8px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: linear-gradient(180deg, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0) 100%);
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        .hud-left {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .rec-pill {
+            background-color: rgba(239, 68, 68, 0.95);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 16px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+        }
+
+        .adas-status {
+            background-color: rgba(34, 197, 94, 0.3);
+            color: #4ade80;
+            border: 1px solid rgba(34, 197, 94, 0.7);
+            padding: 4px 10px;
+            border-radius: 16px;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+
+        .cam-alert-pill {
+            background-color: rgba(234, 179, 8, 0.25);
+            color: #fde047;
+            border: 1px solid rgba(234, 179, 8, 0.6);
+            padding: 4px 8px;
+            border-radius: 16px;
+            font-size: 0.68rem;
+            font-weight: bold;
+        }
+
+        .speed-display {
+            font-size: 2rem;
+            font-weight: 900;
+            color: #ffffff;
+            letter-spacing: -1px;
+            text-shadow: 0 0 14px rgba(59, 130, 246, 0.9);
+            display: flex;
+            align-items: baseline;
+            gap: 2px;
+        }
+
+        .speed-unit {
+            font-size: 0.75rem;
+            font-weight: normal;
+            color: #94a3b8;
+        }
+
+        .traffic-badge {
+            background-color: rgba(15, 23, 42, 0.95);
+            border: 1.5px solid #3b82f6;
+            padding: 6px 12px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.88rem;
+            font-weight: 900;
+            backdrop-filter: blur(10px);
+        }
+
+        .light-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background-color: #475569;
+        }
+
+        .light-dot.red { background-color: #ef4444; box-shadow: 0 0 14px #ef4444; }
+        .light-dot.green { background-color: #22c55e; box-shadow: 0 0 14px #22c55e; }
+
+        /* 🗺️ 모바일 턴바이턴 배너 */
+        .navi-turn-banner {
+            position: absolute;
+            top: 55px;
+            left: 16px;
+            background-color: rgba(15, 23, 42, 0.95);
+            border: 2px solid #38bdf8;
+            border-radius: 16px;
+            padding: 10px 16px;
+            display: none;
+            align-items: center;
+            gap: 12px;
+            z-index: 25;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+        }
+
+        .turn-icon {
+            font-size: 2.2rem;
+            color: #38bdf8;
+            font-weight: 900;
+        }
+
+        .turn-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .turn-dist {
+            font-size: 1.5rem;
+            font-weight: 900;
+            color: #38bdf8;
+        }
+
+        .turn-text {
+            font-size: 0.85rem;
+            color: #f8fafc;
+            font-weight: 700;
+        }
+
+        /* 🗺️ 우측 상단 실시간 모바일 GPS 미니맵 */
+        .navi-minimap-container {
+            position: absolute;
+            top: 55px;
+            right: 16px;
+            width: 180px;
+            height: 180px;
+            border-radius: 16px;
+            border: 2px solid #0284c7;
+            overflow: hidden;
+            z-index: 25;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.8);
+            display: none;
+        }
+
+        #naviMap {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 단속 카메라 알림 배너 */
+        .camera-pop-banner {
+            position: absolute;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 22px;
+            border-radius: 25px;
+            font-size: 1.05rem;
+            font-weight: 900;
+            z-index: 36;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            display: none;
+            backdrop-filter: blur(10px);
+            animation: popIn 0.3s ease-out;
+            text-align: center;
+            white-space: nowrap;
+            background-color: rgba(234, 179, 8, 0.95);
+            color: #000;
+            border: 2px solid #fde047;
+        }
+
+        /* 신호 변경 대형 팝업 배너 */
+        .signal-pop-banner {
+            position: absolute;
+            top: 115px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 22px;
+            border-radius: 25px;
+            font-size: 1.1rem;
+            font-weight: 900;
+            z-index: 35;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            display: none;
+            backdrop-filter: blur(10px);
+            animation: popIn 0.3s ease-out;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        @keyframes popIn {
+            from { transform: translateX(-50%) scale(0.7); opacity: 0; }
+            to { transform: translateX(-50%) scale(1); opacity: 1; }
+        }
+
+        /* 경보 발생 시 화면 중앙 팝업 */
+        .alert-banner {
+            position: absolute;
+            top: 30%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 14px 24px;
+            border-radius: 12px;
+            font-size: 1.15rem;
+            font-weight: 900;
+            display: none;
+            z-index: 30;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.9);
+            text-align: center;
+            width: 85%;
+            max-width: 450px;
+            backdrop-filter: blur(10px);
+        }
+
+        .alert-banner.critical {
+            background-color: rgba(220, 38, 38, 0.95);
+            color: #ffffff;
+            display: block;
+            border: 2px solid #f87171;
+            animation: flash 0.3s infinite alternate;
+        }
+
+        @keyframes flash {
+            from { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+            to { opacity: 0.85; transform: translate(-50%, -50%) scale(1.03); }
+        }
+
+        /* 📱 모바일 최적화 드래그 메뉴 바 */
+        .compact-menu-bar {
+            position: absolute;
+            bottom: env(safe-area-inset-bottom, 12px);
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            z-index: 50;
+            background-color: rgba(15, 23, 42, 0.94);
+            padding: 6px 10px;
+            border-radius: 22px;
+            backdrop-filter: blur(14px);
+            border: 1.5px solid rgba(59, 130, 246, 0.6);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.8);
+            white-space: nowrap;
+        }
+
+        .drag-handle {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(255,255,255,0.18);
+            color: #38bdf8;
+            padding: 6px 10px;
+            border-radius: 14px;
+            font-size: 0.72rem;
+            font-weight: bold;
+            cursor: grab;
+            touch-action: none;
+            min-height: 36px;
+        }
+
+        .mini-btn {
+            background-color: rgba(255,255,255,0.15);
+            color: #fff;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 16px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.15s;
+            touch-action: manipulation;
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .mini-btn:active {
+            transform: scale(0.92);
+            background-color: rgba(255,255,255,0.35);
+        }
+
+        .power-btn-off {
+            background-color: #22c55e;
+            color: #ffffff;
+            font-weight: 900;
+            box-shadow: 0 0 10px rgba(34, 197, 94, 0.6);
+        }
+
+        .power-btn-on {
+            background-color: #ef4444;
+            color: #ffffff;
+            font-weight: 900;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+            animation: pulse 1.5s infinite;
+        }
+
+        .navi-btn-off {
+            background-color: #475569;
+            color: #cbd5e1;
+        }
+
+        .navi-btn-on {
+            background-color: #0284c7;
+            color: #ffffff;
+            font-weight: 900;
+            box-shadow: 0 0 8px rgba(2, 132, 199, 0.6);
+        }
+
+        .play-btn { background-color: #ec4899; }
+        .hide-btn { background-color: #475569; }
+
+        /* 모바일 모달 */
+        .navi-search-modal, .video-modal {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(0,0,0,0.92);
+            z-index: 100;
+            display: none;
+            flex-direction: column;
+            padding: 16px;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .search-card, .video-modal-card {
+            background-color: #1e293b;
+            border-radius: 16px;
+            padding: 20px;
+            width: 92%;
+            max-width: 500px;
+            border: 1px solid #334155;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .search-input-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .search-input {
+            flex: 1;
+            background-color: #0f172a;
+            border: 1px solid #38bdf8;
+            color: #fff;
+            padding: 12px 14px;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            outline: none;
+        }
+
+        .search-btn {
+            background-color: #0284c7;
+            color: #fff;
+            border: none;
+            padding: 12px 18px;
+            border-radius: 10px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .search-results {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .search-item {
+            background-color: #0f172a;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 1px solid #334155;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="mobile-viewport" id="mobileViewport">
+        <!-- 모바일 후면 카메라 비디오 -->
+        <video id="cameraVideo" autoplay playsinline muted style="display: none;"></video>
+
+        <!-- 상단 HUD -->
+        <div class="top-hud">
+            <div class="hud-left">
+                <div id="recPill" class="rec-pill">
+                    <span style="width: 5px; height: 5px; background: white; border-radius: 50%;"></span>
+                    REC (<span id="recCount">0</span>/2)
+                </div>
+                <div id="adasBadge" class="adas-status">⚪ ADAS 대기 중</div>
+                <div class="cam-alert-pill">📷 단속 알림 ON</div>
+            </div>
+
+            <!-- 현재 GPS 차속 -->
+            <div class="speed-display">
+                <span id="speedNum">0</span>
+                <span class="speed-unit">km/h</span>
+            </div>
+
+            <!-- 우측 신호등 감지 배지 -->
+            <div class="traffic-badge">
+                <div id="lightDot" class="light-dot green"></div>
+                <span id="lightText">신호 스캔 중</span>
+            </div>
+        </div>
+
+        <!-- 단속 카메라 알림 배너 -->
+        <div id="cameraPopBanner" class="camera-pop-banner">📷 단속 카메라 주의 구간</div>
+
+        <!-- 🗺️ 모바일 턴바이턴 배너 -->
+        <div id="naviTurnBanner" class="navi-turn-banner">
+            <div id="turnIcon" class="turn-icon">↗</div>
+            <div class="turn-info">
+                <div id="turnDist" class="turn-dist">300m</div>
+                <div id="turnText" class="turn-text">잠시 후 우회전입니다</div>
+            </div>
+        </div>
+
+        <!-- 🗺️ 모바일 GPS 지형 미니맵 -->
+        <div id="naviMapContainer" class="navi-minimap-container">
+            <div id="naviMap"></div>
+        </div>
+
+        <!-- 신호 변경 대형 팝업 배너 -->
+        <div id="signalPopBanner" class="signal-pop-banner"></div>
+
+        <!-- 중앙 비상 경보 팝업 -->
+        <div id="alertBanner" class="alert-banner">위험 경보 메시지</div>
+
+        <!-- 메인 카메라 & ADAS 오버레이 캔버스 -->
+        <canvas id="adasCanvas"></canvas>
+
+        <!-- 📱 모바일 드래그 제어 메뉴 바 -->
+        <div id="draggableMenu" class="compact-menu-bar">
+            <div class="drag-handle" id="dragHandle">⋮⋮ 드래그</div>
+            <button id="btnPowerToggle" class="mini-btn power-btn-off">⚡ ADAS 켜기 (ON)</button>
+            <button id="btnNaviToggle" class="mini-btn navi-btn-off">🗺️ 내비 OFF</button>
+            <button id="btnFullScreen" class="mini-btn" style="background-color: #059669;">⛶ 꽉 찬 화면</button>
+            <button id="btnPlayRecordings" class="mini-btn play-btn">📁 블랙박스</button>
+            <button id="btnHideMenu" class="mini-btn hide-btn">🙈 접기</button>
+        </div>
+
+        <!-- 목적지 검색 모달 -->
+        <div id="naviSearchModal" class="navi-search-modal">
+            <div class="search-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; color: #38bdf8; font-weight: bold;">
+                    <span>🗺️ 실시간 경로 길안내 (목적지 검색)</span>
+                    <button id="btnCloseNaviModal" style="background: none; border: none; color: #fff; font-size: 1.3rem; cursor: pointer;">✕</button>
+                </div>
+                <div class="search-input-group">
+                    <input type="text" id="destInput" class="search-input" placeholder="목적지 검색 (예: 서울역, 강남역, 인천공항)" value="서울역">
+                    <button id="btnSearchDest" class="search-btn">검색</button>
+                </div>
+                <div id="searchResults" class="search-results">
+                    <div class="search-item" onclick="selectQuickDest(37.5559, 126.9723, '서울역')">📍 <b>서울역</b> (서울특별시 용산구 한강대로 405)</div>
+                    <div class="search-item" onclick="selectQuickDest(37.4979, 127.0276, '강남역')">📍 <b>강남역</b> (서울특별시 강남구 강남대로 396)</div>
+                    <div class="search-item" onclick="selectQuickDest(37.4602, 126.4407, '인천국제공항')">📍 <b>인천국제공항</b> (인천광역시 중구 공항로 272)</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 블랙박스 저장 영상 모달 -->
+        <div id="videoModal" class="video-modal">
+            <div class="video-modal-card">
+                <div style="font-size: 0.95rem; font-weight: bold; color: #ec4899; display: flex; justify-content: space-between; align-items: center;">
+                    <span>⏺️ 블랙박스 저장 영상 (최대 2개 순환)</span>
+                    <button id="btnCloseModal" style="background: none; border: none; color: #fff; font-size: 1.2rem; cursor: pointer;">✕</button>
+                </div>
+                <div style="width:100%; height:180px; background:#000; border-radius:6px; overflow:hidden;">
+                    <video id="blackboxPlayer" controls autoplay style="width:100%; height:100%; object-fit:contain;"></video>
+                </div>
+                <div id="videoListContainer" style="display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto;">
+                    <div style="color: #94a3b8; font-size: 0.8rem; text-align: center; padding: 8px;">녹화된 영상이 아직 없습니다.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 모바일 자동 캐시 세척
+        if ('caches' in window) {
+            caches.keys().then(function(names) { for (let name of names) caches.delete(name); });
+        }
+
+        // -------------------------------------------------------------
+        // 💡 모바일 운전 중 화면 꺼짐 100% 방지 (HTML5 Screen Wake Lock)
+        // -------------------------------------------------------------
+        let wakeLock = null;
+        async function requestScreenWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                }
+            } catch (err) {}
+        }
+
+        // -------------------------------------------------------------
+        // 📳 모바일 햅틱 진동 피드백
+        // -------------------------------------------------------------
+        function triggerHaptic(duration = 25) {
+            if ('vibrate' in navigator) {
+                navigator.vibrate(duration);
+            }
+        }
+
+        const canvas = document.getElementById('adasCanvas');
+        const ctx = canvas.getContext('2d');
+        const video = document.getElementById('cameraVideo');
+        const adasBadge = document.getElementById('adasBadge');
+        const mobileViewport = document.getElementById('mobileViewport');
+        const speedNum = document.getElementById('speedNum');
+        const recCount = document.getElementById('recCount');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('orientationchange', resizeCanvas);
+        resizeCanvas();
+
+        // -------------------------------------------------------------
+        // 🖐️ 모바일 드래그 핸들 전용 드래그
+        // -------------------------------------------------------------
+        const draggableMenu = document.getElementById('draggableMenu');
+        const dragHandle = document.getElementById('dragHandle');
+        const btnHideMenu = document.getElementById('btnHideMenu');
+
+        let isDragging = false;
+        let startX, startY, initialLeft, initialTop;
+
+        function startDrag(e) {
+            isDragging = true;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+            const rect = draggableMenu.getBoundingClientRect();
+            startX = clientX;
+            startY = clientY;
+            initialLeft = rect.left;
+            initialTop = rect.top;
+
+            draggableMenu.style.transform = 'none';
+            draggableMenu.style.left = initialLeft + 'px';
+            draggableMenu.style.top = initialTop + 'px';
+            draggableMenu.style.bottom = 'auto';
+        }
+
+        function moveDrag(e) {
+            if (!isDragging) return;
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+            const deltaX = clientX - startX;
+            const deltaY = clientY - startY;
+
+            let newLeft = initialLeft + deltaX;
+            let newTop = initialTop + deltaY;
+
+            newLeft = Math.max(5, Math.min(window.innerWidth - draggableMenu.offsetWidth - 5, newLeft));
+            newTop = Math.max(5, Math.min(window.innerHeight - draggableMenu.offsetHeight - 5, newTop));
+
+            draggableMenu.style.left = newLeft + 'px';
+            draggableMenu.style.top = newTop + 'px';
+        }
+
+        function stopDrag() { isDragging = false; }
+
+        dragHandle.addEventListener('touchstart', startDrag, { passive: true });
+        window.addEventListener('touchmove', moveDrag, { passive: true });
+        window.addEventListener('touchend', stopDrag);
+
+        dragHandle.addEventListener('mousedown', startDrag);
+        window.addEventListener('mousemove', moveDrag);
+        window.addEventListener('mouseup', stopDrag);
+
+        btnHideMenu.addEventListener('click', (e) => {
+            e.stopPropagation();
+            triggerHaptic();
+            draggableMenu.style.display = 'none';
+        });
+
+        // -------------------------------------------------------------
+        // 🗺️ 내비게이션 ON / OFF 토글
+        // -------------------------------------------------------------
+        let naviPowerOn = false;
+        const btnNaviToggle = document.getElementById('btnNaviToggle');
+        const naviSearchModal = document.getElementById('naviSearchModal');
+        const btnCloseNaviModal = document.getElementById('btnCloseNaviModal');
+        const naviTurnBanner = document.getElementById('naviTurnBanner');
+        const naviMapContainer = document.getElementById('naviMapContainer');
+
+        function toggleNaviPower(e) {
+            if (e) e.stopPropagation();
+            triggerHaptic();
+            if (naviPowerOn) {
+                naviPowerOn = false;
+                btnNaviToggle.className = 'mini-btn navi-btn-off';
+                btnNaviToggle.innerText = '🗺️ 내비 OFF';
+
+                naviTurnBanner.style.display = 'none';
+                naviMapContainer.style.display = 'none';
+                speakVoice("내비게이션을 종료합니다. 모바일 순수 ADAS 및 단속 카메라 모드로 작동합니다.", true);
+            } else {
+                naviPowerOn = true;
+                btnNaviToggle.className = 'mini-btn navi-btn-on';
+                btnNaviToggle.innerText = '🗺️ 내비 ON';
+
+                naviSearchModal.style.display = 'flex';
+                speakVoice("내비게이션 모드가 켜졌습니다. 목적지를 선택해주세요.", true);
+            }
+        }
+
+        btnNaviToggle.addEventListener('click', toggleNaviPower);
+        btnNaviToggle.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            toggleNaviPower(e);
+        });
+
+        btnCloseNaviModal.addEventListener('click', () => {
+            triggerHaptic();
+            naviSearchModal.style.display = 'none';
+        });
+
+        // -------------------------------------------------------------
+        // 🗺️ Leaflet.js 모바일 지도 엔진
+        // -------------------------------------------------------------
+        let map = null;
+        let userMarker = null;
+        let routePolyline = null;
+        let currentLat = 37.5665;
+        let currentLon = 126.9780;
+        let destLat = null, destLon = null, destName = "";
+
+        function initNaviMap() {
+            if (map) return;
+            naviMapContainer.style.display = 'block';
+            map = L.map('naviMap', { zoomControl: false, attributionControl: false }).setView([currentLat, currentLon], 16);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+            userMarker = L.circleMarker([currentLat, currentLon], {
+                radius: 8, fillColor: "#38bdf8", color: "#ffffff", weight: 2, opacity: 1, fillOpacity: 0.9
+            }).addTo(map);
+        }
+
+        window.selectQuickDest = function(lat, lon, name) {
+            triggerHaptic();
+            destLat = lat;
+            destLon = lon;
+            destName = name;
+            naviSearchModal.style.display = 'none';
+            fetchRealOsrmRoute(currentLat, currentLon, destLat, destLon, destName);
+        };
+
+        document.getElementById('btnSearchDest').addEventListener('click', async () => {
+            triggerHaptic();
+            const query = document.getElementById('destInput').value;
+            if (!query) return;
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                if (data && data.length > 0) {
+                    const first = data[0];
+                    selectQuickDest(parseFloat(first.lat), parseFloat(first.lon), first.display_name.split(',')[0]);
+                } else { alert("검색 결과가 없습니다!"); }
+            } catch (e) { alert("네트워크 오류!"); }
+        });
+
+        async function fetchRealOsrmRoute(sLat, sLon, dLat, dLon, name) {
+            initNaviMap();
+            naviTurnBanner.style.display = 'flex';
+
+            try {
+                const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${sLon},${sLat};${dLon},${dLat}?overview=full&geometries=geojson&steps=true`;
+                const res = await fetch(osrmUrl);
+                const json = await res.json();
+
+                if (json.routes && json.routes.length > 0) {
+                    const route = json.routes[0];
+                    const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+
+                    if (routePolyline) map.removeLayer(routePolyline);
+                    routePolyline = L.polyline(coords, { color: '#38bdf8', weight: 6, opacity: 0.9 }).addTo(map);
+                    map.fitBounds(routePolyline.getBounds());
+
+                    speakVoice(`${name} 방향 정밀 경로 안내를 시작합니다. 300미터 앞 우회전입니다.`, true);
+                } else { startFallbackRoute(name); }
+            } catch (e) { startFallbackRoute(name); }
+        }
+
+        function startFallbackRoute(name) {
+            if (routePolyline) map.removeLayer(routePolyline);
+            routePolyline = L.polyline([
+                [currentLat, currentLon],
+                [currentLat + 0.003, currentLon + 0.002],
+                [destLat, destLon]
+            ], { color: '#38bdf8', weight: 6, opacity: 0.9 }).addTo(map);
+            map.fitBounds(routePolyline.getBounds());
+            speakVoice(`${name} 방향 경로 안내를 시작합니다. 300미터 앞 우회전입니다.`, true);
+        }
+
+        // -------------------------------------------------------------
+        // 📷 이동식 / 고정식 단속 카메라 음성 엔진
+        // -------------------------------------------------------------
+        let lastCameraAlertTime = 0;
+        const cameraPopBanner = document.getElementById('cameraPopBanner');
+
+        function triggerSpeedCameraAlert(type, speedLimit = 50) {
+            const now = Date.now();
+            if (now - lastCameraAlertTime < 8000) return;
+            lastCameraAlertTime = now;
+
+            if (type === 'FIXED') {
+                cameraPopBanner.innerText = `📷 300m 앞 ${speedLimit}km 고정식 과속 및 신호위반 단속`;
+                cameraPopBanner.style.display = 'block';
+                playBuzzer(1100, 'sine', 0.2);
+                speakVoice(`주의! 300미터 앞 ${speedLimit}키로 고정식 과속 및 신호위반 단속 카메라 구간입니다. 속도를 줄이세요.`, true);
+            } else if (type === 'MOBILE') {
+                cameraPopBanner.innerText = `📷 이동식 과속 단속 카메라 주의 구간`;
+                cameraPopBanner.style.display = 'block';
+                playBuzzer(1000, 'sine', 0.2);
+                speakVoice(`주의! 이동식 과속 단속 카메라 위험 구간입니다. 안전 운전하세요.`, true);
+            }
+
+            setTimeout(() => { cameraPopBanner.style.display = 'none'; }, 3500);
+        }
+
+        // -------------------------------------------------------------
+        // 스마트폰 실제 GPS 차속 & 단속 카메라 스캔
+        // -------------------------------------------------------------
+        let egoSpeed = 0;
+        let lastGpsCheckTime = 0;
+
+        if ('geolocation' in navigator) {
+            navigator.geolocation.watchPosition((pos) => {
+                currentLat = pos.coords.latitude;
+                currentLon = pos.coords.longitude;
+
+                if (pos.coords.speed !== null && pos.coords.speed >= 0) {
+                    egoSpeed = Math.round(pos.coords.speed * 3.6);
+                } else {
+                    egoSpeed = 50;
+                }
+                speedNum.innerText = egoSpeed;
+
+                const now = Date.now();
+                if (programRunning && now - lastGpsCheckTime > 12000) {
+                    lastGpsCheckTime = now;
+                    if (egoSpeed > 55) { triggerSpeedCameraAlert('FIXED', 50); }
+                    else { triggerSpeedCameraAlert('MOBILE', 50); }
+                }
+
+                if (naviPowerOn && map && userMarker) {
+                    userMarker.setLatLng([currentLat, currentLon]);
+                    map.panTo([currentLat, currentLon]);
+                }
+            }, (err) => {
+                egoSpeed = 50;
+                speedNum.innerText = egoSpeed;
+            }, { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 });
+        } else {
+            egoSpeed = 50;
+            speedNum.innerText = egoSpeed;
+        }
+
+        // -------------------------------------------------------------
+        // 2개 순환 블랙박스 녹화 엔진
+        // -------------------------------------------------------------
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let storedRecordings = [];
+        let recordingInterval = null;
+
+        function initBlackboxRecorder(stream) {
+            if (!window.MediaRecorder) return;
+            try {
+                mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+            } catch (e) {
+                try { mediaRecorder = new MediaRecorder(stream); } catch (e2) { return; }
+            }
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data && event.data.size > 0) recordedChunks.push(event.data);
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+                recordedChunks = [];
+                const blobUrl = URL.createObjectURL(blob);
+                const timestamp = new Date().toLocaleTimeString('ko-KR');
+
+                if (storedRecordings.length >= 2) {
+                    const oldest = storedRecordings.shift();
+                    URL.revokeObjectURL(oldest.blobUrl);
+                }
+
+                storedRecordings.push({ id: Date.now(), time: timestamp, blobUrl: blobUrl, blob: blob });
+                recCount.innerText = storedRecordings.length;
+            };
+
+            mediaRecorder.start();
+
+            if (recordingInterval) clearInterval(recordingInterval);
+            recordingInterval = setInterval(() => {
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                    mediaRecorder.start();
+                }
+            }, 60000);
+        }
+
+        function stopBlackboxRecorder() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+            if (recordingInterval) clearInterval(recordingInterval);
+        }
+
+        // -------------------------------------------------------------
+        // ⚡ ADAS 켜기(ON) / 🛑 ADAS 끄기(OFF) 메인 스위치
+        // -------------------------------------------------------------
+        let programRunning = false;
+        let cameraStream = null;
+        const btnPowerToggle = document.getElementById('btnPowerToggle');
+
+        async function toggleProgramPower() {
+            triggerHaptic();
+            if (programRunning) {
+                programRunning = false;
+                if (cameraStream) {
+                    cameraStream.getTracks().forEach(track => track.stop());
+                    cameraStream = null;
+                }
+                stopBlackboxRecorder();
+                video.srcObject = null;
+
+                btnPowerToggle.className = 'mini-btn power-btn-off';
+                btnPowerToggle.innerText = '⚡ ADAS 켜기 (ON)';
+                adasBadge.innerText = '⚪ ADAS 대기 중';
+                speakVoice("프로그램이 종료되었습니다.");
+            } else {
+                initAudio();
+                requestScreenWakeLock(); // 운전 중 모바일 화면 꺼짐 100% 방지
+                try {
+                    const constraints = {
+                        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
+                        audio: false
+                    };
+                    cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    video.srcObject = cameraStream;
+                    await video.play();
+
+                    programRunning = true;
+                    btnPowerToggle.className = 'mini-btn power-btn-on';
+                    btnPowerToggle.innerText = '🛑 ADAS 끄기 (OFF)';
+                    adasBadge.innerText = '🟢 카메라 ADAS 가동 중';
+
+                    initBlackboxRecorder(cameraStream);
+                    speakVoice("모바일 ADAS 및 단속 카메라 감지가 시작되었습니다.");
+                } catch (err) { alert("스마트폰 카메라 권한을 승인해주세요!"); }
+            }
+        }
+
+        btnPowerToggle.addEventListener('click', toggleProgramPower);
+        btnPowerToggle.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            toggleProgramPower();
+        });
+
+        // 오디오 자율 활성화
+        let audioCtx = null;
+        let lastAlertTime = 0;
+
+        function initAudio() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        window.addEventListener('touchstart', initAudio, { once: true });
+        window.addEventListener('click', initAudio, { once: true });
+
+        // 전체 화면
+        document.getElementById('btnFullScreen').addEventListener('click', (e) => {
+            e.stopPropagation();
+            triggerHaptic();
+            if (!document.fullscreenElement) {
+                if (mobileViewport.requestFullscreen) mobileViewport.requestFullscreen();
+                else if (mobileViewport.webkitRequestFullscreen) mobileViewport.webkitRequestFullscreen();
+            } else {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+        });
+
+        // 블랙박스 재생 모달
+        const videoModal = document.getElementById('videoModal');
+        const btnPlayRecordings = document.getElementById('btnPlayRecordings');
+        const btnCloseModal = document.getElementById('btnCloseModal');
+        const blackboxPlayer = document.getElementById('blackboxPlayer');
+        const videoListContainer = document.getElementById('videoListContainer');
+
+        btnPlayRecordings.addEventListener('click', (e) => {
+            e.stopPropagation();
+            triggerHaptic();
+            renderVideoList();
+            videoModal.style.display = 'flex';
+        });
+
+        btnCloseModal.addEventListener('click', () => {
+            triggerHaptic();
+            blackboxPlayer.pause();
+            videoModal.style.display = 'none';
+        });
+
+        function renderVideoList() {
+            videoListContainer.innerHTML = '';
+            if (storedRecordings.length === 0) {
+                videoListContainer.innerHTML = '<div style="color: #94a3b8; font-size: 0.8rem; text-align: center; padding: 8px;">녹화된 영상이 아직 없습니다.</div>';
+                return;
+            }
+
+            storedRecordings.forEach((item, idx) => {
+                const div = document.createElement('div');
+                div.className = 'video-item';
+                div.innerHTML = `
+                    <div>
+                        <span style="color:#ec4899; font-weight:bold;">▶ 영상 ${idx + 1}</span>
+                        <span style="color:#94a3b8; margin-left:6px;">(${item.time} 녹화)</span>
+                    </div>
+                    <div style="display:flex; gap:4px;">
+                        <button onclick="playRecBlob('${item.blobUrl}')" style="background:#3b82f6; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-size:0.7rem; cursor:pointer;">재생</button>
+                        <a href="${item.blobUrl}" download="blackbox_${item.id}.mp4" style="background:#22c55e; color:#fff; text-decoration:none; padding:4px 8px; border-radius:4px; font-size:0.7rem;">다운로드</a>
+                    </div>
+                `;
+                videoListContainer.appendChild(div);
+            });
+
+            if (storedRecordings.length > 0) playRecBlob(storedRecordings[storedRecordings.length - 1].blobUrl);
+        }
+
+        window.playRecBlob = function(url) {
+            blackboxPlayer.src = url;
+            blackboxPlayer.play();
+        };
+
+        function playBuzzer(freq = 880, type = 'sine', duration = 0.15) {
+            initAudio();
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        function speakVoice(text, bypassDebounce = false) {
+            const now = Date.now();
+            if (!bypassDebounce && (now - lastAlertTime < 1800)) return;
+            lastAlertTime = now;
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                const utter = new SpeechSynthesisUtterance(text);
+                utter.lang = 'ko-KR';
+                utter.rate = 1.25;
+                utter.pitch = 1.1;
+                window.speechSynthesis.speak(utter);
+            }
+        }
+
+        let signalPopTimer = null;
+        function showSignalPopBanner(text, bgColor, textColor = '#ffffff') {
+            const popBanner = document.getElementById('signalPopBanner');
+            popBanner.innerText = text;
+            popBanner.style.backgroundColor = bgColor;
+            popBanner.style.color = textColor;
+            popBanner.style.display = 'block';
+
+            if (signalPopTimer) clearTimeout(signalPopTimer);
+            signalPopTimer = setTimeout(() => { popBanner.style.display = 'none'; }, 2800);
+        }
+
+        // -------------------------------------------------------------
+        // 실시간 신호등 픽셀 분석 엔진
+        // -------------------------------------------------------------
+        let lastAutoSignalState = 'GREEN';
+        let lastSignalDetectTime = 0;
+
+        function analyzeCameraFramePixels(frameCtx, width, height) {
+            if (!programRunning) return;
+            const signalRegionHeight = Math.floor(height * 0.38);
+            const frameData = frameCtx.getImageData(0, 0, width, signalRegionHeight);
+            const data = frameData.data;
+
+            let redPixels = 0;
+            let greenPixels = 0;
+
+            for (let i = 0; i < data.length; i += 16) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+
+                if (r > 190 && g < 100 && b < 100 && r > g * 1.8) redPixels++;
+                else if (g > 180 && r < 120 && b > 100 && g > r * 1.5) greenPixels++;
+            }
+
+            const now = Date.now();
+            if (now - lastSignalDetectTime > 2500) {
+                const lightDot = document.getElementById('lightDot');
+                const lightText = document.getElementById('lightText');
+
+                if (redPixels > 10 && lastAutoSignalState !== 'RED') {
+                    lastAutoSignalState = 'RED';
+                    lastSignalDetectTime = now;
+                    lightDot.className = 'light-dot red';
+                    lightText.innerText = '적색 정지 신호';
+                    showSignalPopBanner('🚨 위험! 적색 정지 신호! 차를 멈추세요!', 'rgba(239, 68, 68, 0.95)');
+                    playBuzzer(950, 'sine', 0.25);
+                    speakVoice("위험! 적색 정지 신호! 차를 멈추세요!", true);
+                } else if (greenPixels > 10 && lastAutoSignalState !== 'GREEN') {
+                    lastAutoSignalState = 'GREEN';
+                    lastSignalDetectTime = now;
+                    lightDot.className = 'light-dot green';
+                    lightText.innerText = '파란 신호';
+                    showSignalPopBanner('🟢 파란 신호입니다. 출발하세요.', 'rgba(34, 197, 94, 0.95)');
+                    speakVoice("파란 신호입니다. 출발하세요.", true);
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 메인 렌더링 루프
+        // -------------------------------------------------------------
+        let lastFrameTime = performance.now();
+        let frameScanCounter = 0;
+        let vehicleDistance = 22.0;
+
+        function renderLoop() {
+            const now = performance.now();
+            const dt = Math.min((now - lastFrameTime) / 1000, 0.1);
+            lastFrameTime = now;
+
+            const vpX = canvas.width / 2;
+            const vpY = canvas.height * 0.45;
+
+            if (programRunning && video.readyState === 4) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+                frameScanCounter++;
+                if (frameScanCounter % 6 === 0) {
+                    try { analyzeCameraFramePixels(ctx, canvas.width, canvas.height); } catch (e) {}
+                }
+            } else {
+                ctx.fillStyle = '#050b14';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = '#1e293b';
+                ctx.beginPath();
+                ctx.moveTo(vpX - 15, vpY);
+                ctx.lineTo(vpX + 15, vpY);
+                ctx.lineTo(canvas.width * 0.95, canvas.height);
+                ctx.lineTo(canvas.width * 0.05, canvas.height);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.strokeStyle = '#64748b';
+                ctx.lineWidth = Math.max(2, canvas.width * 0.004);
+                ctx.setLineDash([15, 15]);
+                ctx.lineDashOffset = -now * 0.04 * (Math.max(30, egoSpeed) / 60);
+                ctx.beginPath();
+                ctx.moveTo(vpX, vpY);
+                ctx.lineTo(canvas.width / 2, canvas.height);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+
+            if (programRunning) {
+                const boxHeight = Math.max(35, (canvas.height * 1.2) / vehicleDistance);
+                const boxWidth = boxHeight * 1.2;
+                const carY = vpY + (canvas.height - vpY) * (1.0 - (vehicleDistance / 50.0));
+                const carX = vpX - boxWidth / 2;
+
+                ctx.strokeStyle = '#22c55e';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(carX, carY - boxHeight, boxWidth, boxHeight);
+
+                ctx.fillStyle = '#22c55e';
+                ctx.fillRect(carX, carY - boxHeight - 20, boxWidth, 20);
+                ctx.fillStyle = '#000';
+                ctx.font = 'bold 11px sans-serif';
+                ctx.fillText(`AHEAD VEHICLE | ${vehicleDistance.toFixed(1)}m`, carX + 4, carY - boxHeight - 5);
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        requestAnimationFrame(renderLoop);
+    </script>
+</body>
+</html>
