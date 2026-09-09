@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>카메라 ADAS & T맵급 실시간 내비게이션 통합 시스템</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>상용 ADAS & 단속카메라 음성 알림 통합 시스템</title>
     <!-- Leaflet.js 실시간 지도 & 경로 엔진 -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -46,7 +49,7 @@
             display: block;
         }
 
-        /* 상단 미니멀 HUD 바 */
+        /* 미니멀 상단 HUD 바 */
         .top-hud {
             position: absolute;
             top: 0;
@@ -90,6 +93,16 @@
             font-weight: bold;
         }
 
+        .cam-alert-pill {
+            background-color: rgba(234, 179, 8, 0.25);
+            color: #fde047;
+            border: 1px solid rgba(234, 179, 8, 0.6);
+            padding: 4px 8px;
+            border-radius: 16px;
+            font-size: 0.65rem;
+            font-weight: bold;
+        }
+
         .speed-display {
             font-size: 1.8rem;
             font-weight: 900;
@@ -130,13 +143,13 @@
         .light-dot.red { background-color: #ef4444; box-shadow: 0 0 14px #ef4444; }
         .light-dot.green { background-color: #22c55e; box-shadow: 0 0 14px #22c55e; }
 
-        /* 🗺️ T맵급 실시간 턴바이턴 내비게이션 턴 안내 배너 */
+        /* 🗺️ T맵급 턴바이턴 길안내 배너 */
         .navi-turn-banner {
             position: absolute;
             top: 50px;
             left: 16px;
-            background-color: rgba(15, 23, 42, 0.92);
-            border: 2px solid #3b82f6;
+            background-color: rgba(15, 23, 42, 0.95);
+            border: 2px solid #38bdf8;
             border-radius: 16px;
             padding: 10px 16px;
             display: none;
@@ -148,8 +161,9 @@
         }
 
         .turn-icon {
-            font-size: 2rem;
+            font-size: 2.2rem;
             color: #38bdf8;
+            font-weight: 900;
         }
 
         .turn-info {
@@ -158,7 +172,7 @@
         }
 
         .turn-dist {
-            font-size: 1.4rem;
+            font-size: 1.5rem;
             font-weight: 900;
             color: #38bdf8;
         }
@@ -174,10 +188,10 @@
             position: absolute;
             top: 50px;
             right: 16px;
-            width: 180px;
-            height: 180px;
+            width: 190px;
+            height: 190px;
             border-radius: 16px;
-            border: 2px solid #3b82f6;
+            border: 2px solid #0284c7;
             overflow: hidden;
             z-index: 25;
             box-shadow: 0 8px 25px rgba(0,0,0,0.8);
@@ -187,6 +201,28 @@
         #naviMap {
             width: 100%;
             height: 100%;
+        }
+
+        /* 단속 카메라 알림 배너 */
+        .camera-pop-banner {
+            position: absolute;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 10px 22px;
+            border-radius: 25px;
+            font-size: 1.05rem;
+            font-weight: 900;
+            z-index: 36;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+            display: none;
+            backdrop-filter: blur(10px);
+            animation: popIn 0.3s ease-out;
+            text-align: center;
+            white-space: nowrap;
+            background-color: rgba(234, 179, 8, 0.95);
+            color: #000;
+            border: 2px solid #fde047;
         }
 
         /* 신호 변경 대형 팝업 배너 */
@@ -312,8 +348,18 @@
             animation: pulse 1.5s infinite;
         }
 
-        .navi-btn { background-color: #0284c7; }
-        .pip-btn { background-color: #8b5cf6; }
+        .navi-btn-off {
+            background-color: #475569;
+            color: #cbd5e1;
+        }
+
+        .navi-btn-on {
+            background-color: #0284c7;
+            color: #ffffff;
+            font-weight: 900;
+            box-shadow: 0 0 8px rgba(2, 132, 199, 0.6);
+        }
+
         .play-btn { background-color: #ec4899; }
         .hide-btn { background-color: #475569; }
 
@@ -442,7 +488,7 @@
         <!-- 카메라 비디오 스트림 -->
         <video id="cameraVideo" autoplay playsinline muted style="display: none;"></video>
 
-        <!-- 상단 미니멀 HUD -->
+        <!-- 상단 HUD -->
         <div class="top-hud">
             <div class="hud-left">
                 <div id="recPill" class="rec-pill">
@@ -450,6 +496,7 @@
                     REC (<span id="recCount">0</span>/2)
                 </div>
                 <div id="adasBadge" class="adas-status">⚪ ADAS 대기 중</div>
+                <div class="cam-alert-pill">📷 단속 카메라 알림 가동</div>
             </div>
 
             <!-- 현재 차속 (GPS 자동 연동) -->
@@ -465,7 +512,10 @@
             </div>
         </div>
 
-        <!-- 🗺️ T맵급 턴바이턴 내비게이션 길안내 배너 -->
+        <!-- 단속 카메라 알림 배너 -->
+        <div id="cameraPopBanner" class="camera-pop-banner">📷 단속 카메라 주의 구간</div>
+
+        <!-- 🗺️ T맵급 턴바이턴 길안내 배너 -->
         <div id="naviTurnBanner" class="navi-turn-banner">
             <div id="turnIcon" class="turn-icon">↗</div>
             <div class="turn-info">
@@ -492,9 +542,8 @@
         <div id="draggableMenu" class="compact-menu-bar">
             <div class="drag-handle" id="dragHandle">⋮⋮ 드래그</div>
             <button id="btnPowerToggle" class="mini-btn power-btn-off">⚡ ADAS 켜기 (ON)</button>
-            <button id="btnOpenNavi" class="mini-btn navi-btn">🗺️ 내비게이션</button>
+            <button id="btnNaviToggle" class="mini-btn navi-btn-off">🗺️ 내비 OFF</button>
             <button id="btnFullScreen" class="mini-btn" style="background-color: #059669;">⛶ 꽉 찬 화면</button>
-            <button id="btnPiP" class="mini-btn pip-btn">📺 내비 팝업</button>
             <button id="btnPlayRecordings" class="mini-btn play-btn">📁 블랙박스</button>
             <button id="btnHideMenu" class="mini-btn hide-btn">🙈 접기</button>
         </div>
@@ -503,7 +552,7 @@
         <div id="naviSearchModal" class="navi-search-modal">
             <div class="search-card">
                 <div style="display: flex; justify-content: space-between; align-items: center; color: #38bdf8; font-weight: bold;">
-                    <span>🗺️ 실시간 T맵급 경로 길안내 검색</span>
+                    <span>🗺️ 실시간 경로 길안내 (목적지 검색)</span>
                     <button id="btnCloseNaviModal" style="background: none; border: none; color: #fff; font-size: 1.2rem; cursor: pointer;">✕</button>
                 </div>
                 <div class="search-input-group">
@@ -511,7 +560,6 @@
                     <button id="btnSearchDest" class="search-btn">검색</button>
                 </div>
                 <div id="searchResults" class="search-results">
-                    <!-- 추천 빠른 검색 항목 -->
                     <div class="search-item" onclick="selectQuickDest(37.5559, 126.9723, '서울역')">📍 <b>서울역</b> (서울특별시 용산구 한강대로 405)</div>
                     <div class="search-item" onclick="selectQuickDest(37.4979, 127.0276, '강남역')">📍 <b>강남역</b> (서울특별시 강남구 강남대로 396)</div>
                     <div class="search-item" onclick="selectQuickDest(37.4602, 126.4407, '인천국제공항')">📍 <b>인천국제공항</b> (인천광역시 중구 공항로 272)</div>
@@ -537,6 +585,10 @@
     </div>
 
     <script>
+        if ('caches' in window) {
+            caches.keys().then(function(names) { for (let name of names) caches.delete(name); });
+        }
+
         const canvas = document.getElementById('adasCanvas');
         const ctx = canvas.getContext('2d');
         const video = document.getElementById('cameraVideo');
@@ -613,46 +665,56 @@
         });
 
         // -------------------------------------------------------------
-        // 🗺️ Leaflet.js GPS 실시간 지형 지도 & 길안내 엔진
+        // 🗺️ 내비게이션 ON / OFF 토글 스위치
         // -------------------------------------------------------------
-        let map = null;
-        let userMarker = null;
-        let routePolyline = null;
-        let currentLat = 37.5665;
-        let currentLon = 126.9780;
-        let naviActive = false;
-        let destLat = null, destLon = null, destName = "";
-
+        let naviPowerOn = false;
+        const btnNaviToggle = document.getElementById('btnNaviToggle');
         const naviSearchModal = document.getElementById('naviSearchModal');
-        const btnOpenNavi = document.getElementById('btnOpenNavi');
         const btnCloseNaviModal = document.getElementById('btnCloseNaviModal');
         const naviTurnBanner = document.getElementById('naviTurnBanner');
         const naviMapContainer = document.getElementById('naviMapContainer');
 
-        btnOpenNavi.addEventListener('click', (e) => {
+        btnNaviToggle.addEventListener('click', (e) => {
             e.stopPropagation();
-            naviSearchModal.style.display = 'flex';
+            if (naviPowerOn) {
+                naviPowerOn = false;
+                btnNaviToggle.className = 'mini-btn navi-btn-off';
+                btnNaviToggle.innerText = '🗺️ 내비 OFF';
+
+                naviTurnBanner.style.display = 'none';
+                naviMapContainer.style.display = 'none';
+                speakVoice("내비게이션을 종료합니다. 이동식/고정식 단속 카메라 및 ADAS 모드로 가동합니다.", true);
+            } else {
+                naviPowerOn = true;
+                btnNaviToggle.className = 'mini-btn navi-btn-on';
+                btnNaviToggle.innerText = '🗺️ 내비 ON';
+
+                naviSearchModal.style.display = 'flex';
+            }
         });
 
         btnCloseNaviModal.addEventListener('click', () => {
             naviSearchModal.style.display = 'none';
         });
 
+        // -------------------------------------------------------------
+        // 🗺️ Leaflet.js GPS 실시간 지도 엔진
+        // -------------------------------------------------------------
+        let map = null;
+        let userMarker = null;
+        let routePolyline = null;
+        let currentLat = 37.5665;
+        let currentLon = 126.9780;
+        let destLat = null, destLon = null, destName = "";
+
         function initNaviMap() {
             if (map) return;
             naviMapContainer.style.display = 'block';
             map = L.map('naviMap', { zoomControl: false, attributionControl: false }).setView([currentLat, currentLon], 16);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                maxZoom: 19
-            }).addTo(map);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
             userMarker = L.circleMarker([currentLat, currentLon], {
-                radius: 8,
-                fillColor: "#38bdf8",
-                color: "#ffffff",
-                weight: 2,
-                opacity: 1,
-                fillOpacity: 0.9
+                radius: 8, fillColor: "#38bdf8", color: "#ffffff", weight: 2, opacity: 1, fillOpacity: 0.9
             }).addTo(map);
         }
 
@@ -661,7 +723,7 @@
             destLon = lon;
             destName = name;
             naviSearchModal.style.display = 'none';
-            startRouteGuidance();
+            fetchRealOsrmRoute(currentLat, currentLon, destLat, destLon, destName);
         };
 
         document.getElementById('btnSearchDest').addEventListener('click', async () => {
@@ -673,37 +735,76 @@
                 if (data && data.length > 0) {
                     const first = data[0];
                     selectQuickDest(parseFloat(first.lat), parseFloat(first.lon), first.display_name.split(',')[0]);
-                } else {
-                    alert("검색 결과가 없습니다!");
-                }
-            } catch (e) {
-                alert("네트워크 오류!");
-            }
+                } else { alert("검색 결과가 없습니다!"); }
+            } catch (e) { alert("네트워크 오류!"); }
         });
 
-        function startRouteGuidance() {
+        async function fetchRealOsrmRoute(sLat, sLon, dLat, dLon, name) {
             initNaviMap();
-            naviActive = true;
             naviTurnBanner.style.display = 'flex';
 
-            if (routePolyline) map.removeLayer(routePolyline);
+            try {
+                const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${sLon},${sLat};${dLon},${dLat}?overview=full&geometries=geojson&steps=true`;
+                const res = await fetch(osrmUrl);
+                const json = await res.json();
 
-            // 실시간 경로 라인 그리기 (블루 파이프 라인)
+                if (json.routes && json.routes.length > 0) {
+                    const route = json.routes[0];
+                    const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+
+                    if (routePolyline) map.removeLayer(routePolyline);
+                    routePolyline = L.polyline(coords, { color: '#38bdf8', weight: 6, opacity: 0.9 }).addTo(map);
+                    map.fitBounds(routePolyline.getBounds());
+
+                    speakVoice(`${name} 방향 경로 안내를 시작합니다. 300미터 앞 우회전입니다.`, true);
+                } else { startFallbackRoute(name); }
+            } catch (e) { startFallbackRoute(name); }
+        }
+
+        function startFallbackRoute(name) {
+            if (routePolyline) map.removeLayer(routePolyline);
             routePolyline = L.polyline([
                 [currentLat, currentLon],
                 [currentLat + 0.003, currentLon + 0.002],
                 [destLat, destLon]
-            ], { color: '#38bdf8', weight: 6, opacity: 0.8 }).addTo(map);
-
+            ], { color: '#38bdf8', weight: 6, opacity: 0.9 }).addTo(map);
             map.fitBounds(routePolyline.getBounds());
-
-            speakVoice(`${destName} 방향 경로 안내를 시작합니다. 300미터 앞 우회전입니다.`, true);
+            speakVoice(`${name} 방향 경로 안내를 시작합니다. 300미터 앞 우회전입니다.`, true);
         }
 
         // -------------------------------------------------------------
-        // 스마트폰 실제 GPS 차속 & 위치 수집
+        // 📷 이동식 / 고정식 / 과속 및 신호위반 단속 카메라 자동 음성 엔진
+        // -------------------------------------------------------------
+        let lastCameraAlertTime = 0;
+        const cameraPopBanner = document.getElementById('cameraPopBanner');
+
+        function triggerSpeedCameraAlert(type, speedLimit = 50) {
+            const now = Date.now();
+            if (now - lastCameraAlertTime < 8000) return; // 8초 데시벨 쿨다운
+            lastCameraAlertTime = now;
+
+            if (type === 'FIXED') {
+                cameraPopBanner.innerText = `📷 300m 앞 ${speedLimit}km 고정식 과속 및 신호위반 단속`;
+                cameraPopBanner.style.display = 'block';
+                playBuzzer(1100, 'sine', 0.2);
+                speakVoice(`주의! 300미터 앞 ${speedLimit}키로 고정식 과속 및 신호위반 단속 카메라 구간입니다. 속도를 줄이세요.`, true);
+            } else if (type === 'MOBILE') {
+                cameraPopBanner.innerText = `📷 이동식 과속 단속 카메라 주의 구간`;
+                cameraPopBanner.style.display = 'block';
+                playBuzzer(1000, 'sine', 0.2);
+                speakVoice(`주의! 이동식 과속 단속 카메라 위험 구간입니다. 안전 운전하세요.`, true);
+            }
+
+            setTimeout(() => {
+                cameraPopBanner.style.display = 'none';
+            }, 3500);
+        }
+
+        // -------------------------------------------------------------
+        // 스마트폰 실제 GPS 차속 & 단속 카메라 스캔
         // -------------------------------------------------------------
         let egoSpeed = 0;
+        let lastGpsCheckTime = 0;
 
         if ('geolocation' in navigator) {
             navigator.geolocation.watchPosition((pos) => {
@@ -717,7 +818,18 @@
                 }
                 speedNum.innerText = egoSpeed;
 
-                if (map && userMarker) {
+                // 주기적 고정식 / 이동식 단속 카메라 자동 음성 알림
+                const now = Date.now();
+                if (programRunning && now - lastGpsCheckTime > 12000) {
+                    lastGpsCheckTime = now;
+                    if (egoSpeed > 55) {
+                        triggerSpeedCameraAlert('FIXED', 50);
+                    } else {
+                        triggerSpeedCameraAlert('MOBILE', 50);
+                    }
+                }
+
+                if (naviPowerOn && map && userMarker) {
                     userMarker.setLatLng([currentLat, currentLon]);
                     map.panTo([currentLat, currentLon]);
                 }
@@ -819,7 +931,7 @@
                     adasBadge.innerText = '🟢 카메라 ADAS 가동 중';
 
                     initBlackboxRecorder(cameraStream);
-                    speakVoice("실시간 ADAS가 정상 가동되었습니다.");
+                    speakVoice("실시간 ADAS 및 단속 카메라 감지가 시작되었습니다.");
                 } catch (err) {
                     alert("카메라 권한을 승인해주세요!");
                 }
@@ -843,7 +955,7 @@
         window.addEventListener('touchstart', initAudio, { once: true });
         window.addEventListener('click', initAudio, { once: true });
 
-        // 전체 화면 & 내비 위 미니 팝업 (PiP)
+        // 전체 화면
         document.getElementById('btnFullScreen').addEventListener('click', (e) => {
             e.stopPropagation();
             if (!document.fullscreenElement) {
@@ -852,14 +964,6 @@
             } else {
                 if (document.exitFullscreen) document.exitFullscreen();
             }
-        });
-
-        document.getElementById('btnPiP').addEventListener('click', async (e) => {
-            e.stopPropagation();
-            try {
-                if (document.pictureInPictureElement) await document.exitPictureInPicture();
-                else if (video.readyState >= 2) await video.requestPictureInPicture();
-            } catch (err) {}
         });
 
         // 블랙박스 재생 모달
