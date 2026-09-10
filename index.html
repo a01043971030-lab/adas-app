@@ -283,6 +283,34 @@
             to { opacity: 0.85; transform: translate(-50%, -50%) scale(1.03); }
         }
 
+        /* 🚨 0.1초 삐뽀삐뽀 비상 경고등 레이어 */
+        .siren-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 99;
+            display: none;
+            box-shadow: inset 0 0 120px rgba(239, 68, 68, 0.95);
+            border: 24px solid rgba(239, 68, 68, 0.95);
+            animation: sirenFlash 0.15s infinite alternate;
+        }
+
+        @keyframes sirenFlash {
+            from {
+                background-color: rgba(239, 68, 68, 0.45);
+                box-shadow: inset 0 0 140px rgba(255, 0, 0, 0.95);
+                border-color: rgba(239, 68, 68, 0.95);
+            }
+            to {
+                background-color: rgba(185, 28, 28, 0.12);
+                box-shadow: inset 0 0 40px rgba(220, 38, 38, 0.4);
+                border-color: rgba(185, 28, 28, 0.4);
+            }
+        }
+
         /* 📱 모바일 최적화 드래그 메뉴 바 */
         .compact-menu-bar {
             position: absolute;
@@ -443,6 +471,9 @@
 <body>
 
     <div class="mobile-viewport" id="mobileViewport">
+        <!-- 🚨 0.1초 반응 삐뽀삐뽀 화면 비상 경고등 -->
+        <div id="emergencySirenOverlay" class="siren-overlay"></div>
+
         <!-- 모바일 후면 카메라 비디오 -->
         <video id="cameraVideo" autoplay playsinline muted style="display: none;"></video>
 
@@ -503,6 +534,7 @@
             <button id="btnNaviToggle" class="mini-btn navi-btn-off">🗺️ 내비 OFF</button>
             <button id="btnFullScreen" class="mini-btn" style="background-color: #059669;">⛶ 꽉 찬 화면</button>
             <button id="btnPlayRecordings" class="mini-btn play-btn">📁 블랙박스</button>
+            <button id="btnExitApp" class="mini-btn" style="background-color: #dc2626; color: #ffffff; font-weight: 900; box-shadow: 0 0 8px rgba(220, 38, 38, 0.7);">❌ 프로그램 종료</button>
             <button id="btnHideMenu" class="mini-btn hide-btn">🙈 접기</button>
         </div>
 
@@ -766,36 +798,29 @@
         }
 
         // -------------------------------------------------------------
-        // 📷 이동식 / 고정식 단속 카메라 음성 엔진
+        // 📷 이동식 / 고정식 단속 카메라 음성 전용 엔진
         // -------------------------------------------------------------
         let lastCameraAlertTime = 0;
-        const cameraPopBanner = document.getElementById('cameraPopBanner');
 
-        function triggerSpeedCameraAlert(type, speedLimit = 50) {
+        function triggerSpeedCameraAlert(type, speedLimit = 60) {
             const now = Date.now();
-            if (now - lastCameraAlertTime < 8000) return;
+            if (now - lastCameraAlertTime < 15000) return;
             lastCameraAlertTime = now;
 
             if (type === 'FIXED') {
-                cameraPopBanner.innerText = `📷 300m 앞 ${speedLimit}km 고정식 과속 및 신호위반 단속`;
-                cameraPopBanner.style.display = 'block';
-                playBuzzer(1100, 'sine', 0.2);
-                speakVoice(`주의! 300미터 앞 ${speedLimit}키로 고정식 과속 및 신호위반 단속 카메라 구간입니다. 속도를 줄이세요.`, true);
+                playSirenPolice(0.3);
+                speakVoiceFast(`주의! 300미터 앞 ${speedLimit}키로 고정식 과속 및 신호위반 단속 구간입니다. 속도를 줄이세요.`, true);
             } else if (type === 'MOBILE') {
-                cameraPopBanner.innerText = `📷 이동식 과속 단속 카메라 주의 구간`;
-                cameraPopBanner.style.display = 'block';
-                playBuzzer(1000, 'sine', 0.2);
-                speakVoice(`주의! 이동식 과속 단속 카메라 위험 구간입니다. 안전 운전하세요.`, true);
+                playSirenPolice(0.3);
+                speakVoiceFast(`주의! 이동식 과속 단속 카메라 위험 구간입니다. 안전 운전하세요.`, true);
             }
-
-            setTimeout(() => { cameraPopBanner.style.display = 'none'; }, 3500);
         }
 
         // -------------------------------------------------------------
-        // 스마트폰 실제 GPS 차속 & 단속 카메라 스캔
+        // 스마트폰 실제 GPS 차속 & 과속 음성 알림
         // -------------------------------------------------------------
         let egoSpeed = 0;
-        let lastGpsCheckTime = 0;
+        let lastOverSpeedAlertTime = 0;
 
         if ('geolocation' in navigator) {
             navigator.geolocation.watchPosition((pos) => {
@@ -805,15 +830,16 @@
                 if (pos.coords.speed !== null && pos.coords.speed >= 0) {
                     egoSpeed = Math.round(pos.coords.speed * 3.6);
                 } else {
-                    egoSpeed = 50;
+                    egoSpeed = 0;
                 }
                 speedNum.innerText = egoSpeed;
 
                 const now = Date.now();
-                if (programRunning && now - lastGpsCheckTime > 12000) {
-                    lastGpsCheckTime = now;
-                    if (egoSpeed > 55) { triggerSpeedCameraAlert('FIXED', 50); }
-                    else { triggerSpeedCameraAlert('MOBILE', 50); }
+                // 과속 경고: 65km/h 이상 주행 시 강렬한 음성 경고발동
+                if (programRunning && egoSpeed > 65 && (now - lastOverSpeedAlertTime > 10000)) {
+                    lastOverSpeedAlertTime = now;
+                    triggerEmergencySirenOverlay(1200);
+                    speakVoiceFast("위험! 속도를 줄이세요! 과속 위험 구간입니다!", true);
                 }
 
                 if (naviPowerOn && map && userMarker) {
@@ -931,6 +957,65 @@
             toggleProgramPower();
         });
 
+        // -------------------------------------------------------------
+        // ❌ 프로그램 완전 종료 (Exit App)
+        // -------------------------------------------------------------
+        function exitProgram() {
+            triggerHaptic(150);
+            speakVoiceFast("프로그램을 완전히 종료합니다.", true);
+
+            // 1. 카메라 스트림 정지
+            programRunning = false;
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+            stopBlackboxRecorder();
+            video.srcObject = null;
+
+            // 2. Screen Wake Lock 해제
+            if (wakeLock) {
+                wakeLock.release().then(() => { wakeLock = null; }).catch(() => {});
+            }
+
+            // 3. 내비게이션 & 미니맵 정지
+            naviPowerOn = false;
+            const btnNaviToggle = document.getElementById('btnNaviToggle');
+            if (btnNaviToggle) {
+                btnNaviToggle.className = 'mini-btn navi-btn-off';
+                btnNaviToggle.innerText = '🗺️ 내비 OFF';
+            }
+            document.getElementById('naviTurnBanner').style.display = 'none';
+            document.getElementById('naviMapContainer').style.display = 'none';
+
+            // 4. UI 상태 업데이트
+            btnPowerToggle.className = 'mini-btn power-btn-off';
+            btnPowerToggle.innerText = '⚡ ADAS 켜기 (ON)';
+            adasBadge.innerText = '⚪ ADAS 종료됨';
+
+            // 5. 비상 경고등 끄기
+            const overlay = document.getElementById('emergencySirenOverlay');
+            if (overlay) overlay.style.display = 'none';
+
+            // 6. 전체 화면 해제 및 탭 닫기 시도
+            if (document.fullscreenElement) {
+                if (document.exitFullscreen) document.exitFullscreen();
+            }
+
+            setTimeout(() => {
+                try { window.close(); } catch (e) {}
+            }, 800);
+        }
+
+        const btnExitApp = document.getElementById('btnExitApp');
+        if (btnExitApp) {
+            btnExitApp.addEventListener('click', exitProgram);
+            btnExitApp.addEventListener('touchend', (e) => {
+                e.preventDefault();
+                exitProgram();
+            });
+        }
+
         // 오디오 자율 활성화
         let audioCtx = null;
         let lastAlertTime = 0;
@@ -1006,99 +1091,213 @@
             blackboxPlayer.play();
         };
 
-        function playBuzzer(freq = 880, type = 'sine', duration = 0.15) {
+        // -------------------------------------------------------------
+        // 🚨 0.1초 반응 삐뽀삐뽀 비상등 & Web Audio 경찰 사이렌 엔진
+        // -------------------------------------------------------------
+        let sirenOverlayTimer = null;
+
+        function triggerEmergencySirenOverlay(durationMs = 1800) {
+            const overlay = document.getElementById('emergencySirenOverlay');
+            if (!overlay) return;
+            overlay.style.display = 'block';
+            triggerHaptic(120);
+            playSirenPolice(0.4);
+
+            if (sirenOverlayTimer) clearTimeout(sirenOverlayTimer);
+            sirenOverlayTimer = setTimeout(() => {
+                overlay.style.display = 'none';
+            }, durationMs);
+        }
+
+        function playSirenPolice(duration = 0.4) {
             initAudio();
             if (!audioCtx) return;
             try {
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
-                osc.type = type;
-                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-                gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+                osc.type = 'sawtooth';
+                const now = audioCtx.currentTime;
+                osc.frequency.setValueAtTime(950, now);
+                osc.frequency.linearRampToValueAtTime(550, now + duration);
+                gain.gain.setValueAtTime(0.6, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + duration);
                 osc.connect(gain);
                 gain.connect(audioCtx.destination);
                 osc.start();
-                osc.stop(audioCtx.currentTime + duration);
+                osc.stop(now + duration);
             } catch (e) {}
         }
 
-        function speakVoice(text, bypassDebounce = false) {
+        let lastVoiceTime = 0;
+        function speakVoiceFast(text, highPriority = true) {
             const now = Date.now();
-            if (!bypassDebounce && (now - lastAlertTime < 1800)) return;
-            lastAlertTime = now;
+            if (!highPriority && (now - lastVoiceTime < 2000)) return;
+            lastVoiceTime = now;
+
             if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel();
+                if (highPriority) {
+                    window.speechSynthesis.cancel();
+                }
                 const utter = new SpeechSynthesisUtterance(text);
                 utter.lang = 'ko-KR';
-                utter.rate = 1.25;
-                utter.pitch = 1.1;
+                utter.rate = 1.35;
+                utter.pitch = 1.15;
+                utter.volume = 1.0;
                 window.speechSynthesis.speak(utter);
             }
         }
 
-        let signalPopTimer = null;
-        function showSignalPopBanner(text, bgColor, textColor = '#ffffff') {
-            const popBanner = document.getElementById('signalPopBanner');
-            popBanner.innerText = text;
-            popBanner.style.backgroundColor = bgColor;
-            popBanner.style.color = textColor;
-            popBanner.style.display = 'block';
-
-            if (signalPopTimer) clearTimeout(signalPopTimer);
-            signalPopTimer = setTimeout(() => { popBanner.style.display = 'none'; }, 2800);
+        // 호환성을 위한 speakVoice 랩퍼
+        function speakVoice(text, bypassDebounce = false) {
+            speakVoiceFast(text, bypassDebounce);
         }
 
         // -------------------------------------------------------------
-        // 실시간 신호등 픽셀 분석 엔진
+        // ⚡ 0.1초 실시간 신호등 픽셀 초고속 스캔 엔진
+        // -------------------------------------------------------------
+        // -------------------------------------------------------------
+        // ⚡ 0.1초 실시간 신호등 픽셀 클러스터 정밀 스캔 엔진
         // -------------------------------------------------------------
         let lastAutoSignalState = 'GREEN';
-        let lastSignalDetectTime = 0;
+        let pendingSignalState = null;
+        let pendingSignalCount = 0;
 
         function analyzeCameraFramePixels(frameCtx, width, height) {
             if (!programRunning) return;
-            const signalRegionHeight = Math.floor(height * 0.38);
-            const frameData = frameCtx.getImageData(0, 0, width, signalRegionHeight);
+
+            // 신호등 핵심 영역: 상단 5% ~ 35%, 좌우 15% ~ 85%
+            const startY = Math.floor(height * 0.05);
+            const scanHeight = Math.floor(height * 0.30);
+            const startX = Math.floor(width * 0.15);
+            const scanWidth = Math.floor(width * 0.70);
+
+            let frameData;
+            try {
+                frameData = frameCtx.getImageData(startX, startY, scanWidth, scanHeight);
+            } catch (e) { return; }
+
             const data = frameData.data;
+            let redClusterCount = 0;
+            let greenClusterCount = 0;
 
-            let redPixels = 0;
-            let greenPixels = 0;
-
-            for (let i = 0; i < data.length; i += 16) {
+            for (let i = 0; i < data.length; i += 12) {
                 const r = data[i];
                 const g = data[i + 1];
                 const b = data[i + 2];
+                const sum = r + g + b + 1;
 
-                if (r > 190 && g < 100 && b < 100 && r > g * 1.8) redPixels++;
-                else if (g > 180 && r < 120 && b > 100 && g > r * 1.5) greenPixels++;
+                const rNorm = r / sum;
+                const gNorm = g / sum;
+                const luminance = 0.299 * r + 0.587 * g + 0.114 * b;
+
+                // 정규화 색도 & 광도 + 색상 대비 조건 (가짜 붉은색 오탐 차단)
+                if (rNorm > 0.52 && r > 165 && g < 120 && b < 120 && luminance > 90) {
+                    redClusterCount++;
+                } else if (gNorm > 0.44 && g > 155 && r < 135 && b > 90 && luminance > 90) {
+                    greenClusterCount++;
+                }
             }
 
-            const now = Date.now();
-            if (now - lastSignalDetectTime > 2500) {
-                const lightDot = document.getElementById('lightDot');
-                const lightText = document.getElementById('lightText');
+            const lightDot = document.getElementById('lightDot');
+            const lightText = document.getElementById('lightText');
 
-                if (redPixels > 10 && lastAutoSignalState !== 'RED') {
-                    lastAutoSignalState = 'RED';
-                    lastSignalDetectTime = now;
-                    lightDot.className = 'light-dot red';
-                    lightText.innerText = '적색 정지 신호';
-                    showSignalPopBanner('🚨 위험! 적색 정지 신호! 차를 멈추세요!', 'rgba(239, 68, 68, 0.95)');
-                    playBuzzer(950, 'sine', 0.25);
-                    speakVoice("위험! 적색 정지 신호! 차를 멈추세요!", true);
-                } else if (greenPixels > 10 && lastAutoSignalState !== 'GREEN') {
-                    lastAutoSignalState = 'GREEN';
-                    lastSignalDetectTime = now;
-                    lightDot.className = 'light-dot green';
-                    lightText.innerText = '파란 신호';
-                    showSignalPopBanner('🟢 파란 신호입니다. 출발하세요.', 'rgba(34, 197, 94, 0.95)');
-                    speakVoice("파란 신호입니다. 출발하세요.", true);
+            // 20개 이상 밀집 픽셀(Cluster) 존재 시 신호 판정
+            let detectedState = null;
+            if (redClusterCount >= 20) {
+                detectedState = 'RED';
+            } else if (greenClusterCount >= 20) {
+                detectedState = 'GREEN';
+            }
+
+            if (detectedState && detectedState !== lastAutoSignalState) {
+                if (pendingSignalState === detectedState) {
+                    pendingSignalCount++;
+                } else {
+                    pendingSignalState = detectedState;
+                    pendingSignalCount = 1;
                 }
+
+                // 2회 연속 프레임(약 0.06초) 확인 후 즉시 판정 (0.1초 이내 확정)
+                if (pendingSignalCount >= 2) {
+                    lastAutoSignalState = detectedState;
+                    pendingSignalCount = 0;
+
+                    if (lastAutoSignalState === 'RED') {
+                        lightDot.className = 'light-dot red';
+                        lightText.innerText = '적색 정지 신호';
+                        triggerEmergencySirenOverlay(2000);
+                        speakVoiceFast("위험! 적색 정지 신호! 차를 멈추세요!", true);
+                    } else if (lastAutoSignalState === 'GREEN') {
+                        lightDot.className = 'light-dot green';
+                        lightText.innerText = '파란 신호';
+                        const overlay = document.getElementById('emergencySirenOverlay');
+                        if (overlay) overlay.style.display = 'none';
+                        speakVoiceFast("파란 신호입니다. 출발하세요.", true);
+                    }
+                }
+            } else {
+                pendingSignalCount = 0;
             }
         }
 
         // -------------------------------------------------------------
-        // 메인 렌더링 루프
+        // 🚘 실시간 동적 광학 모션 충돌 감지 (Optical FCW)
+        // -------------------------------------------------------------
+        let prevFrameBuffer = null;
+        let lastFcwAlertTime = 0;
+
+        function analyzeOpticalMotion(frameCtx, width, height) {
+            if (!programRunning) return;
+
+            // 중앙 전방 차선 영역 (x: 35%~65%, y: 40%~75%)
+            const cX = Math.floor(width * 0.35);
+            const cY = Math.floor(height * 0.40);
+            const cW = Math.floor(width * 0.30);
+            const cH = Math.floor(height * 0.35);
+
+            let imgData;
+            try {
+                imgData = frameCtx.getImageData(cX, cY, cW, cH);
+            } catch (e) { return; }
+
+            const currData = imgData.data;
+            if (prevFrameBuffer && prevFrameBuffer.length === currData.length) {
+                let diffSum = 0;
+                let totalSampled = 0;
+
+                for (let i = 0; i < currData.length; i += 16) {
+                    const diffR = Math.abs(currData[i] - prevFrameBuffer[i]);
+                    const diffG = Math.abs(currData[i + 1] - prevFrameBuffer[i + 1]);
+                    const diffB = Math.abs(currData[i + 2] - prevFrameBuffer[i + 2]);
+                    diffSum += (diffR + diffG + diffB);
+                    totalSampled++;
+                }
+
+                const avgMotion = diffSum / (totalSampled * 3);
+
+                // 급격한 광학 변동 (전방 차량 급정거 / 접근) 시 거리 감소
+                if (avgMotion > 28.0) {
+                    vehicleDistance = Math.max(6.0, vehicleDistance - 3.8);
+                } else if (avgMotion < 12.0) {
+                    vehicleDistance = Math.min(28.0, vehicleDistance + 0.8);
+                }
+
+                // 충돌 임계치 (15m 이내) 진입 시 즉시 0.1초 비상등 + 음성 알림
+                if (vehicleDistance < 15.0) {
+                    const currentTimeMs = Date.now();
+                    if (currentTimeMs - lastFcwAlertTime > 2500) {
+                        lastFcwAlertTime = currentTimeMs;
+                        triggerEmergencySirenOverlay(1600);
+                        speakVoiceFast("위험! 전방 차량 충돌 위험! 즉시 감속하세요!", true);
+                    }
+                }
+            }
+
+            prevFrameBuffer = new Uint8ClampedArray(currData);
+        }
+
+        // -------------------------------------------------------------
+        // 메인 렌더링 루프 (0.1초 초고속 반응)
         // -------------------------------------------------------------
         let lastFrameTime = performance.now();
         let frameScanCounter = 0;
@@ -1116,8 +1315,13 @@
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
                 frameScanCounter++;
-                if (frameScanCounter % 6 === 0) {
+                // 매 2프레임마다(약 0.03초) 신호등 픽셀 클러스터 분석
+                if (frameScanCounter % 2 === 0) {
                     try { analyzeCameraFramePixels(ctx, canvas.width, canvas.height); } catch (e) {}
+                }
+                // 매 3프레임마다(약 0.05초) 광학 모션 전방 충돌 분석
+                if (frameScanCounter % 3 === 0) {
+                    try { analyzeOpticalMotion(ctx, canvas.width, canvas.height); } catch (e) {}
                 }
             } else {
                 ctx.fillStyle = '#050b14';
@@ -1149,13 +1353,14 @@
                 const carY = vpY + (canvas.height - vpY) * (1.0 - (vehicleDistance / 50.0));
                 const carX = vpX - boxWidth / 2;
 
-                ctx.strokeStyle = '#22c55e';
-                ctx.lineWidth = 3;
+                const isDanger = vehicleDistance < 15.0;
+                ctx.strokeStyle = isDanger ? '#ef4444' : '#22c55e';
+                ctx.lineWidth = isDanger ? 5 : 3;
                 ctx.strokeRect(carX, carY - boxHeight, boxWidth, boxHeight);
 
-                ctx.fillStyle = '#22c55e';
+                ctx.fillStyle = isDanger ? '#ef4444' : '#22c55e';
                 ctx.fillRect(carX, carY - boxHeight - 20, boxWidth, 20);
-                ctx.fillStyle = '#000';
+                ctx.fillStyle = '#ffffff';
                 ctx.font = 'bold 11px sans-serif';
                 ctx.fillText(`AHEAD VEHICLE | ${vehicleDistance.toFixed(1)}m`, carX + 4, carY - boxHeight - 5);
             }
